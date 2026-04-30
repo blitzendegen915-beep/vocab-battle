@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>英単語バトルレート</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">Vocabulary Rating</p>
+        <h1>英単語バトルレート</h1>
+      </div>
+      <nav class="tabs" aria-label="画面切り替え">
+        <button class="tab active" data-view="studentView">生徒</button>
+        <button class="tab" data-view="adminView" data-admin-tab="true">管理者</button>
+      </nav>
+    </header>
+
+    <main>
+      <section id="studentView" class="view active">
+        <section class="panel setup-panel">
+          <div>
+            <h2>受験者情報</h2>
+            <p>学年・クラス・番号・氏名を入力すると、その人の戦闘力を読み込みます。</p>
+          </div>
+          <form id="studentForm" class="student-grid">
+            <label>学年<input id="grade" type="number" min="1" max="6" required placeholder="2" /></label>
+            <label>クラス<input id="className" type="text" required placeholder="A" /></label>
+            <label>番号<input id="studentNo" type="number" min="1" required placeholder="17" /></label>
+            <label>姓<input id="lastName" type="text" required placeholder="山田" /></label>
+            <label>名前<input id="firstName" type="text" required placeholder="太郎" /></label>
+          </form>
+        </section>
+
+        <section class="panel upload-panel">
+          <div>
+            <h2>単語データ</h2>
+            <p>本番では管理者のGoogleスプレッドシートから自動で読み込みます。未設定ならExcel読み込みも使えます。</p>
+          </div>
+          <div class="upload-actions">
+            <button id="loadCloudWordsButton" type="button" class="secondary">共有単語を読み込む</button>
+            <label class="file-button">
+              Excelを選ぶ
+              <input id="fileInput" type="file" accept=".xlsx,.xls,.csv" />
+            </label>
+            <button id="sampleButton" type="button" class="secondary">サンプルで試す</button>
+          </div>
+          <p id="wordStatus" class="status">まだ単語データがありません。</p>
+        </section>
+
+        <section class="game-shell">
+          <aside class="score-panel">
+            <div>
+              <span class="label">単語戦闘力</span>
+              <strong id="powerDisplay">1000</strong>
+            </div>
+            <div>
+              <span class="label">今回の正答率</span>
+              <strong id="accuracyDisplay">0%</strong>
+            </div>
+            <div>
+              <span class="label">進行</span>
+              <strong id="progressDisplay">0 / 10</strong>
+            </div>
+            <p id="syncStatus" class="mini-status">ローカル保存</p>
+          </aside>
+
+          <section class="quiz-panel">
+            <div id="startBox" class="start-box">
+              <h2>10問バトル</h2>
+              <p>生徒情報と単語データがそろうと開始できます。</p>
+              <button id="startButton" type="button" disabled>スタート</button>
+            </div>
+
+            <div id="questionBox" class="question-box hidden">
+              <div class="question-top">
+                <span id="questionNumber" class="pill">第1問</span>
+                <span id="difficultyLabel" class="pill muted">難易度 1</span>
+              </div>
+              <h2 id="wordPrompt">word</h2>
+              <div id="choices" class="choices"></div>
+              <p id="feedback" class="feedback" aria-live="polite"></p>
+            </div>
+
+            <div id="resultBox" class="result-box hidden">
+              <h2>結果</h2>
+              <p id="resultSummary"></p>
+              <div class="result-numbers">
+                <div><span>正解数</span><strong id="correctDisplay">0 / 10</strong></div>
+                <div><span>戦闘力変動</span><strong id="deltaDisplay">+0</strong></div>
+              </div>
+              <button id="restartButton" type="button">もう一度</button>
+            </div>
+          </section>
+        </section>
+      </section>
+
+      <section id="adminView" class="view">
+        <section class="panel admin-panel">
+          <div>
+            <h2>管理者ページ</h2>
+            <p>Google Apps ScriptのURLを設定すると、不特定多数の生徒の結果をスプレッドシートに保存できます。</p>
+          </div>
+          <div class="admin-actions">
+            <button id="refreshHistoryButton" type="button">共有履歴を更新</button>
+            <button id="exportButton" type="button">CSV出力</button>
+            <button id="clearButton" type="button" class="danger">端末内履歴を消去</button>
+          </div>
+        </section>
+
+        <section class="panel cloud-panel">
+          <div>
+            <h2>共有保存設定</h2>
+            <p>Google Apps ScriptのウェブアプリURLを貼ると、全生徒で同じ単語・戦闘力・履歴を使えます。</p>
+          </div>
+          <div class="cloud-form">
+            <input id="gasUrlInput" type="url" placeholder="https://script.google.com/macros/s/...../exec" />
+            <div class="word-admin-actions">
+              <button id="saveGasUrlButton" type="button">URLを保存</button>
+              <button id="clearGasUrlButton" type="button" class="secondary">URLを消去</button>
+            </div>
+            <p id="cloudStatus" class="status">共有保存は未設定です。</p>
+          </div>
+        </section>
+
+        <section class="panel word-admin-panel">
+          <div>
+            <h2>単語データ</h2>
+            <p>Excelで「英単語・意味・難易度」の範囲をコピーして貼り付けます。共有運用ではGoogleスプレッドシートのWordsシートに貼るのがおすすめです。</p>
+          </div>
+          <div class="word-admin-form">
+            <textarea id="wordPasteArea" placeholder="英単語	意味	難易度&#10;dog	犬	1&#10;implicitly	暗黙のうちに	30"></textarea>
+            <div class="word-admin-actions">
+              <button id="applyWordsButton" type="button">この端末に反映</button>
+              <button id="clearWordsButton" type="button" class="secondary">端末内単語を消去</button>
+            </div>
+            <p id="adminWordStatus" class="status">単語データはまだ保存されていません。</p>
+          </div>
+        </section>
+
+        <section class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>日時</th>
+                <th>学年</th>
+                <th>クラス</th>
+                <th>番号</th>
+                <th>氏名</th>
+                <th>正解</th>
+                <th>正答率</th>
+                <th>戦闘力</th>
+                <th>変動</th>
+              </tr>
+            </thead>
+            <tbody id="historyBody">
+              <tr><td colspan="9">履歴はまだありません。</td></tr>
+            </tbody>
+          </table>
+        </section>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
