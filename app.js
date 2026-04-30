@@ -1,37 +1,39 @@
-const QUIZ_LENGTH = 10;
-const STORAGE_KEY = "vocabBattleHistory";
-const POWER_KEY = "vocabBattlePower";
-const STUDENT_POWER_KEY = "vocabBattleStudentPowers";
-const WORDS_KEY = "vocabBattleWords";
-const GAS_URL_KEY = "vocabBattleGasUrl";
-const DEFAULT_GAS_URL = "";
+const DEFAULT_SETTINGS = { quizLength: 10, timeLimitSec: 8 };
+const STORAGE = {
+  gasUrl: "gasWebAppUrl",
+  currentPlayer: "currentPlayer",
+  cachedWords: "cachedWords",
+  cachedSettings: "cachedSettings",
+  localHistory: "vocabBattleHistory"
+};
 const ADMIN_SESSION_KEY = "vocabBattleAdminUnlocked";
+const ADMIN_PIN_SESSION_KEY = "vocabBattleAdminPin";
 const ADMIN_PASSWORD_FALLBACK = "cwbtavog";
 const ADMIN_PASSWORD_HASH = "75ae5d65da5fbbbcaf62828269c71b049d88755196f6fab97dd3a04a6720fd92";
+const DEFAULT_GAS_URL = "";
 
 const sampleWords = [
-  { word: "dog", meaning: "犬", difficulty: 1 },
-  { word: "apple", meaning: "りんご", difficulty: 2 },
-  { word: "important", meaning: "重要な", difficulty: 6 },
-  { word: "increase", meaning: "増加する", difficulty: 8 },
-  { word: "accurate", meaning: "正確な", difficulty: 12 },
-  { word: "significant", meaning: "重要な、かなりの", difficulty: 16 },
-  { word: "elaborate", meaning: "精巧な、詳しく述べる", difficulty: 22 },
-  { word: "implicitly", meaning: "暗黙のうちに", difficulty: 30 },
-  { word: "ambiguous", meaning: "曖昧な", difficulty: 24 },
-  { word: "consequence", meaning: "結果、重要性", difficulty: 18 },
-  { word: "substantial", meaning: "かなりの、実質的な", difficulty: 21 },
-  { word: "reluctant", meaning: "気が進まない", difficulty: 19 }
+  { word: "important", meaning: "重要な", difficulty: 6, unit: "Sample", enabled: true },
+  { word: "accurate", meaning: "正確な", difficulty: 12, unit: "Sample", enabled: true },
+  { word: "reluctant", meaning: "気が進まない", difficulty: 19, unit: "Sample", enabled: true },
+  { word: "dog", meaning: "犬", difficulty: 1, unit: "Sample", enabled: true },
+  { word: "implicitly", meaning: "暗黙のうちに", difficulty: 30, unit: "Sample", enabled: true },
+  { word: "ambiguous", meaning: "曖昧な", difficulty: 24, unit: "Sample", enabled: true }
 ];
 
 let words = [];
+let settings = { ...DEFAULT_SETTINGS };
+let currentPlayer = null;
 let currentQuiz = [];
 let currentIndex = 0;
 let correctCount = 0;
 let earnedWeight = 0;
 let totalWeight = 0;
-let currentPower = 1000;
+let answerLogs = [];
+let questionStartedAt = 0;
+let timerId = null;
 let locked = false;
+let powerBeforeBattle = 1000;
 
 const $ = (id) => document.getElementById(id);
 
@@ -42,7 +44,7 @@ document.querySelectorAll(".tab").forEach((tab) => {
     document.querySelectorAll(".view").forEach((view) => view.classList.remove("active"));
     tab.classList.add("active");
     $(tab.dataset.view).classList.add("active");
-    if (tab.dataset.view === "adminView") renderHistory();
+    if (tab.dataset.view === "adminView") refreshAdmin();
   });
 });
 
@@ -53,6 +55,7 @@ async function confirmAdminAccess() {
   const isValid = crypto.subtle ? (await sha256(password)) === ADMIN_PASSWORD_HASH : password === ADMIN_PASSWORD_FALLBACK;
   if (isValid) {
     sessionStorage.setItem(ADMIN_SESSION_KEY, "true");
+    sessionStorage.setItem(ADMIN_PIN_SESSION_KEY, password);
     return true;
   }
   alert("パスワードが違います。");
@@ -65,53 +68,60 @@ async function sha256(text) {
   return [...new Uint8Array(buffer)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-function getGasUrl() {
-  return localStorage.getItem(GAS_URL_KEY) || DEFAULT_GAS_URL;
-}
-
 function applyGasUrlFromQuery() {
   const params = new URLSearchParams(window.location.search);
   const gasUrl = params.get("gas");
   if (!gasUrl) return;
-  localStorage.setItem(GAS_URL_KEY, gasUrl);
+  localStorage.setItem(STORAGE.gasUrl, gasUrl);
   const cleanUrl = new URL(window.location.href);
   cleanUrl.searchParams.delete("gas");
   window.history.replaceState({}, "", cleanUrl.toString());
 }
 
+function getGasUrl() {
+  return localStorage.getItem(STORAGE.gasUrl) || DEFAULT_GAS_URL;
+}
+
 function setGasUrl(url) {
-  localStorage.setItem(GAS_URL_KEY, url.trim());
+  localStorage.setItem(STORAGE.gasUrl, url.trim());
   updateCloudStatus();
 }
 
 function updateCloudStatus(message = "") {
   const url = getGasUrl();
   $("gasUrlInput").value = url;
-  const status = url ? "共有保存が有効です。" : "共有保存は未設定です。";
-  $("cloudStatus").textContent = message || status;
-  $("syncStatus").textContent = url ? "共有保存" : "ローカル保存";
+  $("cloudStatus").textContent = message || (url ? "共有保存が有効です。" : "GAS URLが設定されていません。");
+  $("syncStatus").textContent = url ? "共有保存が有効です。" : "共有保存は未設定です。";
+  $("adminSaveStatus").textContent = url ? "有効" : "未設定";
 }
 
 function jsonp(action, params = {}) {
   const url = getGasUrl();
-  if (!url) return Promise.reject(new Error("GAS URL is not set"));
+  if (!url) return Promise.reject(new Error("GAS URLが設定されていません。"));
 
   return new Promise((resolve, reject) => {
     const callback = `vocabBattleCallback_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     const script = document.createElement("script");
     const query = new URLSearchParams({ action, callback, ...params });
     const separator = url.includes("?") ? "&" : "?";
+    const timeoutId = window.setTimeout(() => {
+      delete window[callback];
+      script.remove();
+      reject(new Error("通信失敗"));
+    }, 12000);
 
     window[callback] = (data) => {
+      window.clearTimeout(timeoutId);
       delete window[callback];
       script.remove();
       resolve(data);
     };
 
     script.onerror = () => {
+      window.clearTimeout(timeoutId);
       delete window[callback];
       script.remove();
-      reject(new Error("共有データを読み込めませんでした。"));
+      reject(new Error("通信失敗"));
     };
 
     script.src = `${url}${separator}${query.toString()}`;
@@ -121,7 +131,7 @@ function jsonp(action, params = {}) {
 
 async function postToCloud(payload) {
   const url = getGasUrl();
-  if (!url) return;
+  if (!url) throw new Error("GAS URLが設定されていません。");
   await fetch(url, {
     method: "POST",
     mode: "no-cors",
@@ -130,75 +140,91 @@ async function postToCloud(payload) {
   });
 }
 
-function getStudent() {
+function getPlayerForm() {
   return {
-    grade: $("grade").value.trim(),
     className: $("className").value.trim(),
     studentNo: $("studentNo").value.trim(),
-    lastName: $("lastName").value.trim(),
-    firstName: $("firstName").value.trim()
+    nickname: $("nickname").value.trim(),
+    pin: $("pin").value.trim()
   };
 }
 
-function getStudentId() {
-  const student = getStudent();
-  if (!Object.values(student).every(Boolean)) return "";
-  return [student.grade, student.className.toLowerCase(), student.studentNo, student.lastName, student.firstName].join("|");
+function buildPlayerId({ className, studentNo, nickname }) {
+  return className && studentNo ? `${className}-${studentNo}-${nickname}` : nickname;
 }
 
-function isStudentReady() {
-  return Object.values(getStudent()).every(Boolean);
+function validatePlayerForm(form) {
+  if (!form.nickname) return "ニックネームを入力してください。";
+  if (!form.pin) return "暗証番号を入力してください。";
+  if (!/^\d{4,}$/.test(form.pin)) return "暗証番号は4桁以上の数字です。";
+  return "";
 }
 
-function readStudentPowers() {
+function saveCurrentPlayer(player) {
+  currentPlayer = player;
+  localStorage.setItem(STORAGE.currentPlayer, JSON.stringify(player));
+  updatePlayerStatus();
+  updateStartState();
+}
+
+function restoreCurrentPlayer() {
   try {
-    return JSON.parse(localStorage.getItem(STUDENT_POWER_KEY) || "{}");
+    const saved = JSON.parse(localStorage.getItem(STORAGE.currentPlayer) || "null");
+    if (!saved) return;
+    currentPlayer = saved;
+    $("className").value = saved.className || "";
+    $("studentNo").value = saved.studentNo || "";
+    $("nickname").value = saved.nickname || "";
+    updatePlayerStatus();
   } catch {
-    return {};
+    localStorage.removeItem(STORAGE.currentPlayer);
   }
 }
 
-function getLocalPower() {
-  const studentId = getStudentId();
-  if (!studentId) return Number(localStorage.getItem(POWER_KEY) || 1000);
-  const powers = readStudentPowers();
-  return Number(powers[studentId] || 1000);
-}
-
-function setLocalPower(value) {
-  const nextPower = Math.max(100, Math.round(value));
-  const studentId = getStudentId();
-  if (studentId) {
-    const powers = readStudentPowers();
-    powers[studentId] = nextPower;
-    localStorage.setItem(STUDENT_POWER_KEY, JSON.stringify(powers));
-  } else {
-    localStorage.setItem(POWER_KEY, String(nextPower));
+function updatePlayerStatus(message = "") {
+  if (!currentPlayer) {
+    $("playerStatus").textContent = message || "ニックネームと暗証番号を入力してください。";
+    $("powerDisplay").textContent = "1000";
+    return;
   }
-  currentPower = nextPower;
-  updateScorePanel();
+  $("playerStatus").textContent = message || `${currentPlayer.nickname} / 戦闘力 ${currentPlayer.power}`;
+  $("powerDisplay").textContent = currentPlayer.power;
 }
 
-async function loadStudentPower() {
-  currentPower = getLocalPower();
-  updateScorePanel();
-  if (!getGasUrl() || !isStudentReady()) return;
+async function registerPlayer() {
+  const form = getPlayerForm();
+  const error = validatePlayerForm(form);
+  if (error) {
+    updatePlayerStatus(error);
+    return;
+  }
+  if (!getGasUrl()) {
+    updatePlayerStatus("GAS URLが設定されていません。");
+    return;
+  }
 
+  const playerId = buildPlayerId(form);
+  $("registerButton").disabled = true;
+  updatePlayerStatus("確認しています。");
   try {
-    const data = await jsonp("power", { studentId: getStudentId() });
-    if (data.ok && Number(data.power)) {
-      currentPower = Number(data.power);
-      setLocalPower(currentPower);
+    const data = await jsonp("registerPlayer", {
+      playerId,
+      className: form.className,
+      studentNo: form.studentNo,
+      nickname: form.nickname,
+      pin: form.pin
+    });
+    if (!data.ok) {
+      updatePlayerStatus(data.message || "プレイヤー登録に失敗しました。");
+      return;
     }
+    saveCurrentPlayer(data.player);
+    $("pin").value = "";
   } catch {
-    $("syncStatus").textContent = "共有読込失敗";
+    updatePlayerStatus("通信に失敗しました。");
+  } finally {
+    $("registerButton").disabled = false;
   }
-}
-
-function updateScorePanel() {
-  $("powerDisplay").textContent = currentPower;
-  $("accuracyDisplay").textContent = `${Math.round((correctCount / Math.max(1, currentIndex)) * 100)}%`;
-  $("progressDisplay").textContent = `${Math.min(currentIndex, QUIZ_LENGTH)} / ${QUIZ_LENGTH}`;
 }
 
 function normalizeHeader(value) {
@@ -213,20 +239,27 @@ function pickColumn(row, names, fallbackIndex) {
   return Object.values(row)[fallbackIndex];
 }
 
+function normalizeWord(item) {
+  const difficulty = Number(item.difficulty || item["難易度"] || 1);
+  const enabledRaw = item.enabled ?? item["有効"] ?? true;
+  const enabled = enabledRaw === true || String(enabledRaw).toUpperCase() === "TRUE" || String(enabledRaw) === "1";
+  return {
+    word: String(item.word || item["英単語"] || item["単語"] || "").trim(),
+    meaning: String(item.meaning || item["意味"] || item["日本語"] || "").trim(),
+    difficulty: Number.isFinite(difficulty) && difficulty > 0 ? difficulty : 1,
+    unit: String(item.unit || item["単元"] || "").trim(),
+    enabled
+  };
+}
+
 function parseRows(rows) {
-  return rows
-    .map((row) => {
-      const word = pickColumn(row, ["英単語", "単語", "word", "english"], 0);
-      const meaning = pickColumn(row, ["意味", "日本語", "meaning", "ja"], 1);
-      const difficultyRaw = pickColumn(row, ["難易度", "difficulty", "level"], 2);
-      const difficulty = Number(difficultyRaw || 1);
-      return {
-        word: String(word || "").trim(),
-        meaning: String(meaning || "").trim(),
-        difficulty: Number.isFinite(difficulty) && difficulty > 0 ? difficulty : 1
-      };
-    })
-    .filter((item) => item.word && item.meaning);
+  return rows.map((row) => normalizeWord({
+    word: pickColumn(row, ["word", "英単語", "単語", "english"], 0),
+    meaning: pickColumn(row, ["meaning", "意味", "日本語", "ja"], 1),
+    difficulty: pickColumn(row, ["difficulty", "難易度", "level"], 2),
+    unit: pickColumn(row, ["unit", "単元"], 3),
+    enabled: pickColumn(row, ["enabled", "有効"], 4) || true
+  })).filter((item) => item.word && item.meaning && item.enabled);
 }
 
 function parsePastedWords(text) {
@@ -234,102 +267,97 @@ function parsePastedWords(text) {
   if (!lines.length) return [];
   const rows = lines.map((line) => line.split(/\t|,/).map((cell) => cell.trim()));
   const first = rows[0].map((cell) => normalizeHeader(cell));
-  const hasHeader = first.some((cell) => ["英単語", "単語", "word", "english"].includes(cell));
-  return (hasHeader ? rows.slice(1) : rows)
-    .map((cells) => {
-      const difficulty = Number(cells[2] || 1);
-      return {
-        word: String(cells[0] || "").trim(),
-        meaning: String(cells[1] || "").trim(),
-        difficulty: Number.isFinite(difficulty) && difficulty > 0 ? difficulty : 1
-      };
-    })
-    .filter((item) => item.word && item.meaning);
+  const hasHeader = first.some((cell) => ["word", "英単語", "単語"].includes(cell));
+  return (hasHeader ? rows.slice(1) : rows).map((cells) => normalizeWord({
+    word: cells[0],
+    meaning: cells[1],
+    difficulty: cells[2],
+    unit: cells[3],
+    enabled: cells[4] ?? true
+  })).filter((item) => item.word && item.meaning && item.enabled);
 }
 
 function setWords(nextWords, source = "local") {
   words = nextWords;
-  $("wordStatus").textContent = `${words.length}語を読み込みました。${source === "cloud" ? "（共有）" : ""}`;
-  $("adminWordStatus").textContent = `${words.length}語の単語データが保存されています。`;
-  $("startButton").disabled = words.length < 4;
+  localStorage.setItem(STORAGE.cachedWords, JSON.stringify(nextWords));
+  $("wordStatus").textContent = words.length >= 4
+    ? `${words.length}語を読み込みました。${source === "cloud" ? "（共有）" : ""}`
+    : "単語が4語以上必要です。";
+  $("adminWordStatus").textContent = `${words.length}語の端末内単語データがあります。`;
+  $("adminWordsCount").textContent = words.length;
+  updateStartState();
 }
 
-function saveWords(nextWords) {
-  localStorage.setItem(WORDS_KEY, JSON.stringify(nextWords));
-  setWords(nextWords);
-}
-
-function loadSavedWords() {
+function loadCachedWords() {
   try {
-    const saved = JSON.parse(localStorage.getItem(WORDS_KEY) || "[]");
-    if (Array.isArray(saved) && saved.length) setWords(saved);
+    const cached = JSON.parse(localStorage.getItem(STORAGE.cachedWords) || "[]");
+    if (Array.isArray(cached) && cached.length) setWords(cached, "cache");
   } catch {
-    localStorage.removeItem(WORDS_KEY);
+    localStorage.removeItem(STORAGE.cachedWords);
   }
 }
 
 async function loadCloudWords() {
   if (!getGasUrl()) {
-    $("wordStatus").textContent = "共有保存URLが未設定です。";
+    $("wordStatus").textContent = "GAS URLが設定されていません。";
     return;
   }
   $("wordStatus").textContent = "共有単語を読み込んでいます。";
   try {
     const data = await jsonp("words");
-    if (!data.ok || !Array.isArray(data.words) || data.words.length < 4) {
-      $("wordStatus").textContent = "共有単語が4語以上ありません。";
+    if (!data.ok || !Array.isArray(data.words)) {
+      $("wordStatus").textContent = "共有単語を読み込めませんでした。";
       return;
     }
-    localStorage.setItem(WORDS_KEY, JSON.stringify(data.words));
-    setWords(data.words, "cloud");
+    setWords(data.words.map(normalizeWord).filter((item) => item.word && item.meaning && item.enabled), "cloud");
   } catch {
     $("wordStatus").textContent = "共有単語を読み込めませんでした。";
   }
 }
 
-$("sampleButton").addEventListener("click", () => setWords(sampleWords));
-$("loadCloudWordsButton").addEventListener("click", loadCloudWords);
+function setSettings(nextSettings, source = "local") {
+  settings = {
+    quizLength: Number(nextSettings.quizLength || DEFAULT_SETTINGS.quizLength),
+    timeLimitSec: Number(nextSettings.timeLimitSec || DEFAULT_SETTINGS.timeLimitSec)
+  };
+  if (!Number.isFinite(settings.quizLength) || settings.quizLength < 1) settings.quizLength = DEFAULT_SETTINGS.quizLength;
+  if (!Number.isFinite(settings.timeLimitSec) || settings.timeLimitSec < 1) settings.timeLimitSec = DEFAULT_SETTINGS.timeLimitSec;
+  localStorage.setItem(STORAGE.cachedSettings, JSON.stringify(settings));
+  $("timeLimitDisplay").textContent = `${settings.timeLimitSec}秒`;
+  $("adminQuizLength").textContent = settings.quizLength;
+  $("adminTimeLimit").textContent = `${settings.timeLimitSec}秒`;
+  updateScorePanel();
+}
 
-$("fileInput").addEventListener("change", async (event) => {
-  const file = event.target.files[0];
-  if (!file) return;
-  const buffer = await file.arrayBuffer();
-  const workbook = XLSX.read(buffer);
-  const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-  const parsed = parseRows(XLSX.utils.sheet_to_json(firstSheet, { defval: "" }));
-  if (parsed.length < 4) {
-    $("wordStatus").textContent = "4択を作るには4語以上必要です。";
-    $("startButton").disabled = true;
-    return;
+function loadCachedSettings() {
+  try {
+    const cached = JSON.parse(localStorage.getItem(STORAGE.cachedSettings) || "null");
+    setSettings(cached || DEFAULT_SETTINGS, "cache");
+  } catch {
+    setSettings(DEFAULT_SETTINGS);
   }
-  saveWords(parsed);
-});
+}
 
-$("applyWordsButton").addEventListener("click", () => {
-  const parsed = parsePastedWords($("wordPasteArea").value);
-  if (parsed.length < 4) {
-    $("adminWordStatus").textContent = "4択を作るには4語以上貼り付けてください。";
-    return;
+async function loadCloudSettings() {
+  if (!getGasUrl()) return;
+  try {
+    const data = await jsonp("settings");
+    if (data.ok && data.settings) setSettings(data.settings, "cloud");
+  } catch {
+    setSettings(settings);
   }
-  saveWords(parsed);
-  $("wordPasteArea").value = "";
-});
+}
 
-$("clearWordsButton").addEventListener("click", () => {
-  if (!confirm("この端末に保存した単語データを消去しますか？")) return;
-  localStorage.removeItem(WORDS_KEY);
-  words = [];
-  $("wordStatus").textContent = "まだ単語データがありません。";
-  $("adminWordStatus").textContent = "単語データはまだ保存されていません。";
-  $("startButton").disabled = true;
-});
+function updateStartState() {
+  $("startButton").disabled = !(currentPlayer && words.length >= 4);
+}
 
-document.querySelectorAll("#studentForm input").forEach((input) => {
-  input.addEventListener("input", () => {
-    $("startButton").disabled = words.length < 4;
-    loadStudentPower();
-  });
-});
+function updateScorePanel() {
+  $("powerDisplay").textContent = currentPlayer ? currentPlayer.power : "1000";
+  $("accuracyDisplay").textContent = `${Math.round((correctCount / Math.max(1, currentIndex)) * 100)}%`;
+  $("progressDisplay").textContent = `${Math.min(currentIndex, currentQuiz.length || settings.quizLength)} / ${currentQuiz.length || settings.quizLength}`;
+  $("timeLimitDisplay").textContent = `${settings.timeLimitSec}秒`;
+}
 
 function shuffle(array) {
   const copy = [...array];
@@ -341,7 +369,7 @@ function shuffle(array) {
 }
 
 function buildQuiz() {
-  const count = Math.min(QUIZ_LENGTH, words.length);
+  const count = Math.min(settings.quizLength, words.length);
   return shuffle(words).slice(0, count).map((question) => {
     const distractors = shuffle(words.filter((item) => item.meaning !== question.meaning))
       .slice(0, 3)
@@ -350,27 +378,33 @@ function buildQuiz() {
   });
 }
 
-$("startButton").addEventListener("click", async () => {
-  if (!isStudentReady()) {
-    alert("学年・クラス・番号・氏名を入力してください。");
+function startQuiz() {
+  if (!currentPlayer) {
+    updatePlayerStatus("ニックネームと暗証番号を入力してください。");
     return;
   }
-  await loadStudentPower();
+  if (words.length < 4) {
+    $("wordStatus").textContent = "単語が4語以上必要です。";
+    return;
+  }
   currentQuiz = buildQuiz();
   currentIndex = 0;
   correctCount = 0;
   earnedWeight = 0;
+  answerLogs = [];
   totalWeight = currentQuiz.reduce((sum, item) => sum + item.difficulty, 0);
+  powerBeforeBattle = Number(currentPlayer.power || 1000);
   $("startBox").classList.add("hidden");
   $("resultBox").classList.add("hidden");
   $("questionBox").classList.remove("hidden");
   updateScorePanel();
   showQuestion();
-});
+}
 
 function showQuestion() {
   locked = false;
   const question = currentQuiz[currentIndex];
+  questionStartedAt = Date.now();
   $("questionNumber").textContent = `第${currentIndex + 1}問`;
   $("difficultyLabel").textContent = `難易度 ${question.difficulty}`;
   $("wordPrompt").textContent = question.word;
@@ -381,16 +415,41 @@ function showQuestion() {
     button.type = "button";
     button.className = "choice";
     button.textContent = choice;
-    button.addEventListener("click", () => answer(choice, button));
+    button.addEventListener("click", () => answer(choice, false, button));
     $("choices").appendChild(button);
   });
+  startTimer();
 }
 
-function answer(choice, selectedButton) {
+function startTimer() {
+  window.clearInterval(timerId);
+  const limitMs = settings.timeLimitSec * 1000;
+  updateTimer(limitMs);
+  timerId = window.setInterval(() => {
+    const remaining = Math.max(0, limitMs - (Date.now() - questionStartedAt));
+    updateTimer(remaining);
+    if (remaining <= 0) {
+      window.clearInterval(timerId);
+      answer("", true, null);
+    }
+  }, 100);
+}
+
+function updateTimer(remainingMs) {
+  const ratio = Math.max(0, Math.min(1, remainingMs / (settings.timeLimitSec * 1000)));
+  $("timerDisplay").textContent = Math.ceil(remainingMs / 1000);
+  $("timerBar").style.width = `${ratio * 100}%`;
+  $("timerBar").classList.toggle("danger", ratio <= 0.3);
+}
+
+function answer(choice, timedOut, selectedButton) {
   if (locked) return;
   locked = true;
+  window.clearInterval(timerId);
+
   const question = currentQuiz[currentIndex];
-  const isCorrect = choice === question.meaning;
+  const responseTimeMs = Math.min(Date.now() - questionStartedAt, settings.timeLimitSec * 1000);
+  const isCorrect = !timedOut && choice === question.meaning;
 
   document.querySelectorAll(".choice").forEach((button) => {
     button.disabled = true;
@@ -401,10 +460,21 @@ function answer(choice, selectedButton) {
     correctCount += 1;
     earnedWeight += question.difficulty;
     $("feedback").textContent = "正解！";
+  } else if (timedOut) {
+    $("feedback").textContent = `時間切れ。正解は「${question.meaning}」`;
   } else {
-    selectedButton.classList.add("wrong");
+    if (selectedButton) selectedButton.classList.add("wrong");
     $("feedback").textContent = `不正解。正解は「${question.meaning}」`;
   }
+
+  answerLogs.push({
+    word: question.word,
+    correctMeaning: question.meaning,
+    selectedMeaning: timedOut ? "" : choice,
+    isCorrect,
+    responseTimeMs,
+    timedOut
+  });
 
   currentIndex += 1;
   updateScorePanel();
@@ -414,77 +484,85 @@ function answer(choice, selectedButton) {
   }, 850);
 }
 
-function calculateDelta() {
-  const accuracy = correctCount / currentQuiz.length;
-  const weightedAccuracy = earnedWeight / Math.max(1, totalWeight);
-  return Math.round(((accuracy * 0.45 + weightedAccuracy * 0.55) - 0.55) * 180);
+function calculateDelta(avgTime) {
+  const total = currentQuiz.length;
+  const wrong = total - correctCount;
+  const baseDelta = (correctCount - wrong) * 12;
+  const speedBonus = avgTime <= (settings.timeLimitSec * 1000) / 2 ? 10 : 0;
+  const timeoutPenalty = answerLogs.filter((log) => log.timedOut).length * -5;
+  return baseDelta + speedBonus + timeoutPenalty;
 }
 
 async function finishQuiz() {
-  const before = currentPower;
-  const delta = calculateDelta();
-  const after = Math.max(100, before + delta);
-  currentPower = after;
-  setLocalPower(after);
+  const avgTime = Math.round(answerLogs.reduce((sum, log) => sum + log.responseTimeMs, 0) / Math.max(1, answerLogs.length));
+  const delta = calculateDelta(avgTime);
+  const powerAfter = Math.max(0, powerBeforeBattle + delta);
+  const bestPower = Math.max(Number(currentPlayer.bestPower || 1000), powerAfter);
+  currentPlayer = { ...currentPlayer, power: powerAfter, bestPower, lastPlayed: new Date().toISOString() };
+  saveCurrentPlayer(currentPlayer);
 
   $("questionBox").classList.add("hidden");
   $("resultBox").classList.remove("hidden");
   $("correctDisplay").textContent = `${correctCount} / ${currentQuiz.length}`;
   $("deltaDisplay").textContent = delta >= 0 ? `+${delta}` : String(delta);
-  $("resultSummary").textContent = `正答率 ${Math.round((correctCount / currentQuiz.length) * 100)}%。単語戦闘力は ${before} から ${after} になりました。`;
+  $("avgTimeDisplay").textContent = `${(avgTime / 1000).toFixed(1)}秒`;
+  $("resultSummary").textContent = `正答率 ${Math.round((correctCount / currentQuiz.length) * 100)}%。戦闘力は ${powerBeforeBattle} から ${powerAfter} になりました。`;
 
   const record = {
     date: new Date().toLocaleString("ja-JP"),
-    studentId: getStudentId(),
-    ...getStudent(),
+    playerId: currentPlayer.playerId,
+    className: currentPlayer.className || "",
+    studentNo: currentPlayer.studentNo || "",
+    nickname: currentPlayer.nickname,
     correct: correctCount,
     total: currentQuiz.length,
     accuracy: Math.round((correctCount / currentQuiz.length) * 100),
-    powerBefore: before,
-    powerAfter: after,
-    delta
+    powerBefore: powerBeforeBattle,
+    powerAfter,
+    delta,
+    avgTime,
+    answerLogs
   };
-  saveHistory(record);
+  saveLocalHistory(record);
 
   if (getGasUrl()) {
-    $("syncStatus").textContent = "送信中";
+    $("syncStatus").textContent = "結果を保存しています。";
     try {
       await postToCloud({ action: "result", record });
-      $("syncStatus").textContent = "送信済み";
+      $("syncStatus").textContent = "結果を保存しました。";
     } catch {
-      $("syncStatus").textContent = "送信失敗";
+      $("syncStatus").textContent = "結果の保存に失敗しました。先生に伝えてください。";
     }
   }
 }
 
-$("restartButton").addEventListener("click", () => {
-  $("resultBox").classList.add("hidden");
-  $("startBox").classList.remove("hidden");
-  currentIndex = 0;
-  correctCount = 0;
-  updateScorePanel();
-});
-
-function readHistory() {
+function readLocalHistory() {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+    return JSON.parse(localStorage.getItem(STORAGE.localHistory) || "[]");
   } catch {
     return [];
   }
 }
 
-function saveHistory(record) {
-  const history = readHistory();
+function saveLocalHistory(record) {
+  const history = readLocalHistory();
   history.unshift(record);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
+  localStorage.setItem(STORAGE.localHistory, JSON.stringify(history.slice(0, 200)));
 }
 
 async function loadCloudHistory() {
   if (!getGasUrl()) return null;
+  const adminPin = sessionStorage.getItem(ADMIN_PIN_SESSION_KEY) || "";
+  if (!adminPin) return null;
   try {
-    const data = await jsonp("history");
-    return data.ok && Array.isArray(data.history) ? data.history : null;
+    const data = await jsonp("history", { adminPin });
+    if (!data.ok) {
+      $("adminSaveStatus").textContent = data.message || "履歴取得失敗";
+      return null;
+    }
+    return Array.isArray(data.history) ? data.history : null;
   } catch {
+    $("adminSaveStatus").textContent = "履歴取得失敗";
     return null;
   }
 }
@@ -492,7 +570,9 @@ async function loadCloudHistory() {
 async function renderHistory() {
   $("historyBody").innerHTML = '<tr><td colspan="9">履歴を読み込んでいます。</td></tr>';
   const cloudHistory = await loadCloudHistory();
-  const history = cloudHistory || readHistory();
+  const history = cloudHistory || readLocalHistory();
+  $("adminHistoryCount").textContent = history.length;
+  if (cloudHistory) $("adminSaveStatus").textContent = "共有履歴を表示中";
   if (!history.length) {
     $("historyBody").innerHTML = '<tr><td colspan="9">履歴はまだありません。</td></tr>';
     return;
@@ -500,16 +580,24 @@ async function renderHistory() {
   $("historyBody").innerHTML = history.map((item) => `
     <tr>
       <td>${escapeHtml(item.date)}</td>
-      <td>${escapeHtml(item.grade)}</td>
-      <td>${escapeHtml(item.className)}</td>
-      <td>${escapeHtml(item.studentNo)}</td>
-      <td>${escapeHtml(item.lastName)} ${escapeHtml(item.firstName)}</td>
+      <td>${escapeHtml(item.nickname || item.playerId || "")}</td>
+      <td>${escapeHtml(item.className || "")}</td>
+      <td>${escapeHtml(item.studentNo || "")}</td>
       <td>${item.correct} / ${item.total}</td>
       <td>${item.accuracy}%</td>
       <td>${item.powerAfter}</td>
       <td>${Number(item.delta) >= 0 ? `+${item.delta}` : item.delta}</td>
+      <td>${item.avgTime ? `${(Number(item.avgTime) / 1000).toFixed(1)}秒` : ""}</td>
     </tr>
   `).join("");
+}
+
+function refreshAdmin() {
+  updateCloudStatus();
+  $("adminWordsCount").textContent = words.length;
+  $("adminQuizLength").textContent = settings.quizLength;
+  $("adminTimeLimit").textContent = `${settings.timeLimitSec}秒`;
+  renderHistory();
 }
 
 function escapeHtml(value) {
@@ -521,20 +609,74 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+$("registerButton").addEventListener("click", registerPlayer);
+$("loadCloudWordsButton").addEventListener("click", async () => {
+  await loadCloudSettings();
+  await loadCloudWords();
+});
+$("sampleButton").addEventListener("click", () => setWords(sampleWords));
+$("startButton").addEventListener("click", startQuiz);
+$("restartButton").addEventListener("click", () => {
+  $("resultBox").classList.add("hidden");
+  $("startBox").classList.remove("hidden");
+  currentIndex = 0;
+  correctCount = 0;
+  updateScorePanel();
+});
+
+$("fileInput").addEventListener("change", async (event) => {
+  const file = event.target.files[0];
+  if (!file) return;
+  const buffer = await file.arrayBuffer();
+  const workbook = XLSX.read(buffer);
+  const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+  const parsed = parseRows(XLSX.utils.sheet_to_json(firstSheet, { defval: "" }));
+  setWords(parsed);
+});
+
+$("applyWordsButton").addEventListener("click", () => {
+  const parsed = parsePastedWords($("wordPasteArea").value);
+  setWords(parsed);
+  $("wordPasteArea").value = "";
+});
+
+$("clearWordsButton").addEventListener("click", () => {
+  if (!confirm("この端末に保存した単語データを消去しますか？")) return;
+  localStorage.removeItem(STORAGE.cachedWords);
+  words = [];
+  $("wordStatus").textContent = "まだ単語データがありません。";
+  $("adminWordStatus").textContent = "端末内単語データはまだ保存されていません。";
+  updateStartState();
+});
+
+$("saveGasUrlButton").addEventListener("click", async () => {
+  setGasUrl($("gasUrlInput").value);
+  updateCloudStatus("共有保存URLを保存しました。");
+  await loadCloudSettings();
+  await loadCloudWords();
+});
+
+$("clearGasUrlButton").addEventListener("click", () => {
+  localStorage.removeItem(STORAGE.gasUrl);
+  updateCloudStatus("共有保存URLを消去しました。");
+});
+
+$("refreshAdminButton").addEventListener("click", refreshAdmin);
+$("clearButton").addEventListener("click", () => {
+  if (!confirm("この端末の履歴を消去しますか？")) return;
+  localStorage.removeItem(STORAGE.localHistory);
+  renderHistory();
+});
+
 $("exportButton").addEventListener("click", () => {
-  const history = readHistory();
+  const history = readLocalHistory();
   if (!history.length) {
-    alert("この端末に出力する履歴がありません。共有履歴はスプレッドシートから見られます。");
+    alert("この端末に出力する履歴がありません。");
     return;
   }
-  const header = ["日時", "学年", "クラス", "番号", "姓", "名前", "正解数", "問題数", "正答率", "戦闘力", "変動"];
-  const rows = history.map((item) => [
-    item.date, item.grade, item.className, item.studentNo, item.lastName, item.firstName,
-    item.correct, item.total, `${item.accuracy}%`, item.powerAfter, item.delta
-  ]);
-  const csv = [header, ...rows]
-    .map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(","))
-    .join("\n");
+  const header = ["date", "playerId", "className", "studentNo", "nickname", "correct", "total", "accuracy", "powerBefore", "powerAfter", "delta", "avgTime"];
+  const rows = history.map((item) => header.map((key) => item[key] ?? ""));
+  const csv = [header, ...rows].map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(",")).join("\n");
   const blob = new Blob([`\ufeff${csv}`], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -544,28 +686,33 @@ $("exportButton").addEventListener("click", () => {
   URL.revokeObjectURL(url);
 });
 
-$("clearButton").addEventListener("click", () => {
-  if (!confirm("この端末の履歴を消去しますか？")) return;
-  localStorage.removeItem(STORAGE_KEY);
-  renderHistory();
+["className", "studentNo", "nickname"].forEach((id) => {
+  $(id).addEventListener("input", () => {
+    if (!currentPlayer) return;
+    const form = getPlayerForm();
+    const playerId = buildPlayerId({ ...form, pin: "" });
+    if (playerId !== currentPlayer.playerId) {
+      currentPlayer = null;
+      localStorage.removeItem(STORAGE.currentPlayer);
+      updatePlayerStatus();
+      updateStartState();
+    }
+  });
 });
 
-$("saveGasUrlButton").addEventListener("click", () => {
-  setGasUrl($("gasUrlInput").value);
-  updateCloudStatus("共有保存URLを保存しました。");
-  loadCloudWords();
-});
+async function boot() {
+  applyGasUrlFromQuery();
+  updateCloudStatus();
+  loadCachedSettings();
+  loadCachedWords();
+  restoreCurrentPlayer();
+  updatePlayerStatus();
+  updateStartState();
+  if (getGasUrl()) {
+    await loadCloudSettings();
+    await loadCloudWords();
+  }
+  refreshAdmin();
+}
 
-$("clearGasUrlButton").addEventListener("click", () => {
-  localStorage.removeItem(GAS_URL_KEY);
-  updateCloudStatus("共有保存URLを消去しました。");
-});
-
-$("refreshHistoryButton").addEventListener("click", renderHistory);
-
-applyGasUrlFromQuery();
-updateCloudStatus();
-loadSavedWords();
-loadStudentPower();
-renderHistory();
-if (getGasUrl()) loadCloudWords();
+boot();

@@ -21,24 +21,24 @@
 
     <main>
       <section id="studentView" class="view active">
-        <section class="panel setup-panel">
+        <section class="panel player-panel">
           <div>
-            <h2>受験者情報</h2>
-            <p>学年・クラス・番号・氏名を入力すると、その人の戦闘力を読み込みます。</p>
+            <h2>プレイヤー登録</h2>
+            <p id="playerStatus">ニックネームと暗証番号を入力してください。</p>
           </div>
-          <form id="studentForm" class="student-grid">
-            <label>学年<input id="grade" type="number" min="1" max="6" required placeholder="2" /></label>
-            <label>クラス<input id="className" type="text" required placeholder="A" /></label>
-            <label>番号<input id="studentNo" type="number" min="1" required placeholder="17" /></label>
-            <label>姓<input id="lastName" type="text" required placeholder="山田" /></label>
-            <label>名前<input id="firstName" type="text" required placeholder="太郎" /></label>
+          <form id="playerForm" class="student-grid">
+            <label>クラス<input id="className" type="text" placeholder="1A" /></label>
+            <label>番号<input id="studentNo" type="number" min="1" placeholder="23" /></label>
+            <label>ニックネーム<input id="nickname" type="text" required placeholder="dragon" /></label>
+            <label>暗証番号<input id="pin" type="password" inputmode="numeric" pattern="[0-9]*" required placeholder="4桁以上" /></label>
+            <button id="registerButton" type="button">続きから始める</button>
           </form>
         </section>
 
         <section class="panel upload-panel">
           <div>
-            <h2>単語データ</h2>
-            <p>本番では管理者のGoogleスプレッドシートから自動で読み込みます。未設定ならExcel読み込みも使えます。</p>
+            <h2>共有単語</h2>
+            <p>先生が設定した単語データを読み込みます。つながらない時は直近の単語を使えます。</p>
           </div>
           <div class="upload-actions">
             <button id="loadCloudWordsButton" type="button" class="secondary">共有単語を読み込む</button>
@@ -54,7 +54,7 @@
         <section class="game-shell">
           <aside class="score-panel">
             <div>
-              <span class="label">単語戦闘力</span>
+              <span class="label">戦闘力</span>
               <strong id="powerDisplay">1000</strong>
             </div>
             <div>
@@ -65,13 +65,17 @@
               <span class="label">進行</span>
               <strong id="progressDisplay">0 / 10</strong>
             </div>
-            <p id="syncStatus" class="mini-status">ローカル保存</p>
+            <div>
+              <span class="label">制限時間</span>
+              <strong id="timeLimitDisplay">8秒</strong>
+            </div>
+            <p id="syncStatus" class="mini-status">共有保存は未設定です。</p>
           </aside>
 
           <section class="quiz-panel">
             <div id="startBox" class="start-box">
-              <h2>10問バトル</h2>
-              <p>生徒情報と単語データがそろうと開始できます。</p>
+              <h2>英単語バトル</h2>
+              <p>プレイヤー登録と共有単語の読み込みが終わると開始できます。</p>
               <button id="startButton" type="button" disabled>スタート</button>
             </div>
 
@@ -79,6 +83,10 @@
               <div class="question-top">
                 <span id="questionNumber" class="pill">第1問</span>
                 <span id="difficultyLabel" class="pill muted">難易度 1</span>
+              </div>
+              <div class="timer-wrap">
+                <strong id="timerDisplay">8</strong>
+                <div class="timer-bar"><span id="timerBar"></span></div>
               </div>
               <h2 id="wordPrompt">word</h2>
               <div id="choices" class="choices"></div>
@@ -91,6 +99,7 @@
               <div class="result-numbers">
                 <div><span>正解数</span><strong id="correctDisplay">0 / 10</strong></div>
                 <div><span>戦闘力変動</span><strong id="deltaDisplay">+0</strong></div>
+                <div><span>平均回答時間</span><strong id="avgTimeDisplay">0.0秒</strong></div>
               </div>
               <button id="restartButton" type="button">もう一度</button>
             </div>
@@ -102,11 +111,11 @@
         <section class="panel admin-panel">
           <div>
             <h2>管理者ページ</h2>
-            <p>Google Apps ScriptのURLを設定すると、不特定多数の生徒の結果をスプレッドシートに保存できます。</p>
+            <p>共有保存、共有単語、設定、最近の結果を確認できます。</p>
           </div>
           <div class="admin-actions">
-            <button id="refreshHistoryButton" type="button">共有履歴を更新</button>
-            <button id="exportButton" type="button">CSV出力</button>
+            <button id="refreshAdminButton" type="button">状態を更新</button>
+            <button id="exportButton" type="button">端末内CSV出力</button>
             <button id="clearButton" type="button" class="danger">端末内履歴を消去</button>
           </div>
         </section>
@@ -114,7 +123,7 @@
         <section class="panel cloud-panel">
           <div>
             <h2>共有保存設定</h2>
-            <p>Google Apps ScriptのウェブアプリURLを貼ると、全生徒で同じ単語・戦闘力・履歴を使えます。</p>
+            <p>Google Apps ScriptのウェブアプリURLを貼ります。</p>
           </div>
           <div class="cloud-form">
             <input id="gasUrlInput" type="url" placeholder="https://script.google.com/macros/s/...../exec" />
@@ -122,22 +131,30 @@
               <button id="saveGasUrlButton" type="button">URLを保存</button>
               <button id="clearGasUrlButton" type="button" class="secondary">URLを消去</button>
             </div>
-            <p id="cloudStatus" class="status">共有保存は未設定です。</p>
+            <p id="cloudStatus" class="status">GAS URLが設定されていません。</p>
           </div>
+        </section>
+
+        <section class="admin-stats">
+          <div><span>共有単語数</span><strong id="adminWordsCount">0</strong></div>
+          <div><span>問題数</span><strong id="adminQuizLength">10</strong></div>
+          <div><span>制限時間</span><strong id="adminTimeLimit">8秒</strong></div>
+          <div><span>最近の結果件数</span><strong id="adminHistoryCount">0</strong></div>
+          <div><span>保存状態</span><strong id="adminSaveStatus">未設定</strong></div>
         </section>
 
         <section class="panel word-admin-panel">
           <div>
-            <h2>単語データ</h2>
-            <p>Excelで「英単語・意味・難易度」の範囲をコピーして貼り付けます。共有運用ではGoogleスプレッドシートのWordsシートに貼るのがおすすめです。</p>
+            <h2>端末内単語データ</h2>
+            <p>共有単語が使えない時の予備です。本番はWordsシートに貼ってください。</p>
           </div>
           <div class="word-admin-form">
-            <textarea id="wordPasteArea" placeholder="英単語	意味	難易度&#10;dog	犬	1&#10;implicitly	暗黙のうちに	30"></textarea>
+            <textarea id="wordPasteArea" placeholder="word	meaning	difficulty	unit	enabled&#10;dog	犬	1	Sample	TRUE&#10;implicitly	暗黙のうちに	30	Sample	TRUE"></textarea>
             <div class="word-admin-actions">
               <button id="applyWordsButton" type="button">この端末に反映</button>
               <button id="clearWordsButton" type="button" class="secondary">端末内単語を消去</button>
             </div>
-            <p id="adminWordStatus" class="status">単語データはまだ保存されていません。</p>
+            <p id="adminWordStatus" class="status">端末内単語データはまだ保存されていません。</p>
           </div>
         </section>
 
@@ -146,14 +163,14 @@
             <thead>
               <tr>
                 <th>日時</th>
-                <th>学年</th>
+                <th>プレイヤー</th>
                 <th>クラス</th>
                 <th>番号</th>
-                <th>氏名</th>
                 <th>正解</th>
                 <th>正答率</th>
                 <th>戦闘力</th>
                 <th>変動</th>
+                <th>平均時間</th>
               </tr>
             </thead>
             <tbody id="historyBody">
