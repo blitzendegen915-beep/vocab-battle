@@ -4,6 +4,7 @@ const STORAGE = {
   currentPlayer: "currentPlayer",
   cachedWords: "cachedWords",
   cachedSettings: "cachedSettings",
+  cachedRanking: "cachedRanking",
   localHistory: "vocabBattleHistory"
 };
 const ADMIN_SESSION_KEY = "vocabBattleAdminUnlocked";
@@ -164,6 +165,7 @@ function saveCurrentPlayer(player) {
   currentPlayer = player;
   localStorage.setItem(STORAGE.currentPlayer, JSON.stringify(player));
   updatePlayerStatus();
+  updateScorePanel();
   updateStartState();
 }
 
@@ -220,6 +222,7 @@ async function registerPlayer() {
     }
     saveCurrentPlayer(data.player);
     $("pin").value = "";
+    loadRanking();
   } catch {
     updatePlayerStatus("通信に失敗しました。");
   } finally {
@@ -354,6 +357,8 @@ function updateStartState() {
 
 function updateScorePanel() {
   $("powerDisplay").textContent = currentPlayer ? currentPlayer.power : "1000";
+  $("seasonBestDisplay").textContent = currentPlayer ? (currentPlayer.seasonBestPower || currentPlayer.power || 1000) : "1000";
+  $("allTimeBestDisplay").textContent = currentPlayer ? (currentPlayer.allTimeBestPower || currentPlayer.bestPower || currentPlayer.power || 1000) : "1000";
   $("accuracyDisplay").textContent = `${Math.round((correctCount / Math.max(1, currentIndex)) * 100)}%`;
   $("progressDisplay").textContent = `${Math.min(currentIndex, currentQuiz.length || settings.quizLength)} / ${currentQuiz.length || settings.quizLength}`;
   $("timeLimitDisplay").textContent = `${settings.timeLimitSec}秒`;
@@ -507,6 +512,7 @@ async function finishQuiz() {
   $("deltaDisplay").textContent = delta >= 0 ? `+${delta}` : String(delta);
   $("avgTimeDisplay").textContent = `${(avgTime / 1000).toFixed(1)}秒`;
   $("resultSummary").textContent = `正答率 ${Math.round((correctCount / currentQuiz.length) * 100)}%。戦闘力は ${powerBeforeBattle} から ${powerAfter} になりました。`;
+  renderAnswerReview();
 
   const record = {
     date: new Date().toLocaleString("ja-JP"),
@@ -530,10 +536,33 @@ async function finishQuiz() {
     try {
       await postToCloud({ action: "result", record });
       $("syncStatus").textContent = "結果を保存しました。";
+      loadRanking();
     } catch {
       $("syncStatus").textContent = "結果の保存に失敗しました。先生に伝えてください。";
     }
   }
+}
+
+function renderAnswerReview() {
+  $("answerReviewList").innerHTML = answerLogs.map((log, index) => {
+    const selected = log.timedOut ? "時間切れ" : log.selectedMeaning || "未回答";
+    const resultClass = log.isCorrect ? "correct" : "wrong";
+    const resultLabel = log.isCorrect ? "正解" : "不正解";
+    return `
+      <article class="answer-review-item ${resultClass}">
+        <div class="answer-review-head">
+          <span>第${index + 1}問</span>
+          <strong>${escapeHtml(log.word)}</strong>
+          <em>${resultLabel}</em>
+        </div>
+        <dl>
+          <div><dt>正しい答え</dt><dd>${escapeHtml(log.correctMeaning)}</dd></div>
+          <div><dt>あなたの回答</dt><dd>${escapeHtml(selected)}</dd></div>
+          <div><dt>回答時間</dt><dd>${(Number(log.responseTimeMs || 0) / 1000).toFixed(1)}秒</dd></div>
+        </dl>
+      </article>
+    `;
+  }).join("");
 }
 
 function readLocalHistory() {
@@ -564,6 +593,71 @@ async function loadCloudHistory() {
   } catch {
     $("adminSaveStatus").textContent = "履歴取得失敗";
     return null;
+  }
+}
+
+function renderRanking(data) {
+  if (!data) return;
+  const season = data.season || {};
+  const top10 = Array.isArray(data.top10) ? data.top10 : [];
+  const me = data.me || null;
+
+  $("seasonLabel").textContent = season.seasonName || season.seasonId || "現在のシーズン";
+  $("adminSeasonName").textContent = season.seasonName || season.seasonId || "-";
+
+  if (!top10.length) {
+    $("rankingList").innerHTML = "<li>ランキングはまだありません。</li>";
+  } else {
+    $("rankingList").innerHTML = top10.map((item) => `
+      <li>
+        <span class="ranking-rank">${item.rank}位</span>
+        <span class="ranking-name">${escapeHtml(item.nickname || "no name")}</span>
+        <span class="ranking-power">${item.power}</span>
+      </li>
+    `).join("");
+  }
+
+  if (me && me.rank) {
+    $("myRankStatus").textContent = `あなた: ${me.rank}位 / 今期戦闘力 ${me.power} / 今期最高 ${me.seasonBestPower} / 歴代最高 ${me.allTimeBestPower}`;
+    if (currentPlayer && me.playerId === currentPlayer.playerId) {
+      saveCurrentPlayer({
+        ...currentPlayer,
+        power: me.power,
+        seasonBestPower: me.seasonBestPower,
+        bestPower: me.allTimeBestPower,
+        allTimeBestPower: me.allTimeBestPower,
+        seasonId: season.seasonId,
+        seasonName: season.seasonName
+      });
+    }
+  } else {
+    $("myRankStatus").textContent = currentPlayer
+      ? "あなたの順位はまだありません。1回受験すると表示されます。"
+      : "プレイヤー登録後に自分の順位が表示されます。";
+  }
+}
+
+async function loadRanking() {
+  if (!getGasUrl()) {
+    $("myRankStatus").textContent = "GAS URLが設定されていません。";
+    return;
+  }
+  try {
+    const params = currentPlayer ? { playerId: currentPlayer.playerId } : {};
+    const data = await jsonp("ranking", params);
+    if (!data.ok) {
+      $("myRankStatus").textContent = data.message || "ランキングを読み込めませんでした。";
+      return;
+    }
+    localStorage.setItem(STORAGE.cachedRanking, JSON.stringify(data));
+    renderRanking(data);
+  } catch {
+    $("myRankStatus").textContent = "ランキングを読み込めませんでした。";
+    try {
+      renderRanking(JSON.parse(localStorage.getItem(STORAGE.cachedRanking) || "null"));
+    } catch {
+      // no cached ranking
+    }
   }
 }
 
@@ -613,7 +707,9 @@ $("registerButton").addEventListener("click", registerPlayer);
 $("loadCloudWordsButton").addEventListener("click", async () => {
   await loadCloudSettings();
   await loadCloudWords();
+  loadRanking();
 });
+$("loadRankingButton").addEventListener("click", loadRanking);
 $("sampleButton").addEventListener("click", () => setWords(sampleWords));
 $("startButton").addEventListener("click", startQuiz);
 $("restartButton").addEventListener("click", () => {
@@ -711,6 +807,7 @@ async function boot() {
   if (getGasUrl()) {
     await loadCloudSettings();
     await loadCloudWords();
+    await loadRanking();
   }
   refreshAdmin();
 }

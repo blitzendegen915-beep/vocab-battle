@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>英単語ランクマッチ</title>
+    <title>英単語バトルレート</title>
     <link rel="stylesheet" href="styles.css" />
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   </head>
@@ -11,7 +11,7 @@
     <header class="app-header">
       <div>
         <p class="eyebrow">Vocabulary Rating</p>
-        <h1>英単語ランクマッチ</h1>
+        <h1>英単語バトルレート</h1>
       </div>
       <nav class="tabs" aria-label="画面切り替え">
         <button class="tab active" data-view="studentView">生徒</button>
@@ -51,11 +51,33 @@
           <p id="wordStatus" class="status">まだ単語データがありません。</p>
         </section>
 
+        <section class="ranking-panel">
+          <div class="ranking-head">
+            <div>
+              <h2>今期ランキング TOP10</h2>
+              <p id="seasonLabel">シーズン未設定</p>
+            </div>
+            <button id="loadRankingButton" type="button" class="secondary">ランキング更新</button>
+          </div>
+          <ol id="rankingList" class="ranking-list">
+            <li>ランキングを読み込んでください。</li>
+          </ol>
+          <p id="myRankStatus" class="status">プレイヤー登録後に自分の順位が表示されます。</p>
+        </section>
+
         <section class="game-shell">
           <aside class="score-panel">
             <div>
-              <span class="label">戦闘力</span>
+              <span class="label">今期戦闘力</span>
               <strong id="powerDisplay">1000</strong>
+            </div>
+            <div>
+              <span class="label">今期最高</span>
+              <strong id="seasonBestDisplay">1000</strong>
+            </div>
+            <div>
+              <span class="label">歴代最高</span>
+              <strong id="allTimeBestDisplay">1000</strong>
             </div>
             <div>
               <span class="label">今回の正答率</span>
@@ -101,6 +123,10 @@
                 <div><span>戦闘力変動</span><strong id="deltaDisplay">+0</strong></div>
                 <div><span>平均回答時間</span><strong id="avgTimeDisplay">0.0秒</strong></div>
               </div>
+              <section class="answer-review">
+                <h3>答え合わせ</h3>
+                <div id="answerReviewList" class="answer-review-list"></div>
+              </section>
               <button id="restartButton" type="button">もう一度</button>
             </div>
           </section>
@@ -136,6 +162,7 @@
         </section>
 
         <section class="admin-stats">
+          <div><span>現在のシーズン</span><strong id="adminSeasonName">-</strong></div>
           <div><span>共有単語数</span><strong id="adminWordsCount">0</strong></div>
           <div><span>問題数</span><strong id="adminQuizLength">10</strong></div>
           <div><span>制限時間</span><strong id="adminTimeLimit">8秒</strong></div>
@@ -182,6 +209,5 @@
     </main>
 
     <script src="app.js"></script>
-    <script src="review.js"></script>
   </body>
 </html>
