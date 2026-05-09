@@ -1,4 +1,9 @@
-const DEFAULT_SETTINGS = { quizLength: 10, timeLimitSec: 8 };
+const DEFAULT_SETTINGS = {
+  quizLength: 10,
+  timeLimitSec: 8,
+  dailyAttemptLimitEnabled: false,
+  dailyAttemptLimit: 5
+};
 const STORAGE = {
   gasUrl: "gasWebAppUrl",
   currentPlayer: "currentPlayer",
@@ -155,6 +160,8 @@ function buildPlayerId({ className, studentNo, nickname }) {
 }
 
 function validatePlayerForm(form) {
+  if (!form.className) return "クラスを入力してください。";
+  if (!form.studentNo) return "出席番号を入力してください。";
   if (!form.nickname) return "ニックネームを入力してください。";
   if (!form.pin) return "暗証番号を入力してください。";
   if (!/^\d{4,}$/.test(form.pin)) return "暗証番号は4桁以上の数字です。";
@@ -185,7 +192,7 @@ function restoreCurrentPlayer() {
 
 function updatePlayerStatus(message = "") {
   if (!currentPlayer) {
-    $("playerStatus").textContent = message || "ニックネームと暗証番号を入力してください。";
+    $("playerStatus").textContent = message || "クラス、出席番号、ニックネーム、暗証番号を入力してください。";
     $("powerDisplay").textContent = "1000";
     return;
   }
@@ -321,10 +328,13 @@ async function loadCloudWords() {
 function setSettings(nextSettings, source = "local") {
   settings = {
     quizLength: Number(nextSettings.quizLength || DEFAULT_SETTINGS.quizLength),
-    timeLimitSec: Number(nextSettings.timeLimitSec || DEFAULT_SETTINGS.timeLimitSec)
+    timeLimitSec: Number(nextSettings.timeLimitSec || DEFAULT_SETTINGS.timeLimitSec),
+    dailyAttemptLimitEnabled: nextSettings.dailyAttemptLimitEnabled === true || String(nextSettings.dailyAttemptLimitEnabled).toUpperCase() === "TRUE",
+    dailyAttemptLimit: Number(nextSettings.dailyAttemptLimit || DEFAULT_SETTINGS.dailyAttemptLimit)
   };
   if (!Number.isFinite(settings.quizLength) || settings.quizLength < 1) settings.quizLength = DEFAULT_SETTINGS.quizLength;
   if (!Number.isFinite(settings.timeLimitSec) || settings.timeLimitSec < 1) settings.timeLimitSec = DEFAULT_SETTINGS.timeLimitSec;
+  if (!Number.isFinite(settings.dailyAttemptLimit) || settings.dailyAttemptLimit < 1) settings.dailyAttemptLimit = DEFAULT_SETTINGS.dailyAttemptLimit;
   localStorage.setItem(STORAGE.cachedSettings, JSON.stringify(settings));
   $("timeLimitDisplay").textContent = `${settings.timeLimitSec}秒`;
   $("adminQuizLength").textContent = settings.quizLength;
@@ -383,15 +393,31 @@ function buildQuiz() {
   });
 }
 
-function startQuiz() {
+async function checkDailyAttemptLimit() {
+  if (!settings.dailyAttemptLimitEnabled || !currentPlayer || !getGasUrl()) return true;
+  try {
+    const data = await jsonp("attemptStatus", { playerId: currentPlayer.playerId });
+    if (data.ok && data.allowed === false) {
+      $("wordStatus").textContent = data.message || `今日は${settings.dailyAttemptLimit}回までです。`;
+      return false;
+    }
+  } catch {
+    $("wordStatus").textContent = "受験回数を確認できませんでした。";
+    return false;
+  }
+  return true;
+}
+
+async function startQuiz() {
   if (!currentPlayer) {
-    updatePlayerStatus("ニックネームと暗証番号を入力してください。");
+    updatePlayerStatus("クラス、出席番号、ニックネーム、暗証番号を入力してください。");
     return;
   }
   if (words.length < 4) {
     $("wordStatus").textContent = "単語が4語以上必要です。";
     return;
   }
+  if (!(await checkDailyAttemptLimit())) return;
   currentQuiz = buildQuiz();
   currentIndex = 0;
   correctCount = 0;

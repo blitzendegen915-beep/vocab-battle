@@ -24,11 +24,11 @@
         <section class="panel player-panel">
           <div>
             <h2>プレイヤー登録</h2>
-            <p id="playerStatus">ニックネームと暗証番号を入力してください。</p>
+            <p id="playerStatus">クラス、出席番号、ニックネーム、暗証番号を入力してください。</p>
           </div>
           <form id="playerForm" class="student-grid">
-            <label>クラス<input id="className" type="text" placeholder="1A" /></label>
-            <label>番号<input id="studentNo" type="number" min="1" placeholder="23" /></label>
+            <label>クラス<input id="className" type="text" required placeholder="1A" /></label>
+            <label>出席番号<input id="studentNo" type="number" min="1" required placeholder="23" /></label>
             <label>ニックネーム<input id="nickname" type="text" required placeholder="dragon" /></label>
             <label>暗証番号<input id="pin" type="password" inputmode="numeric" pattern="[0-9]*" required placeholder="4桁以上" /></label>
             <button id="registerButton" type="button">続きから始める</button>
@@ -192,7 +192,7 @@
                 <th>日時</th>
                 <th>プレイヤー</th>
                 <th>クラス</th>
-                <th>番号</th>
+                <th>出席番号</th>
                 <th>正解</th>
                 <th>正答率</th>
                 <th>戦闘力</th>
