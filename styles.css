@@ -109,6 +109,26 @@ button:disabled {
   color: #102e32;
 }
 
+.notice-banner {
+  align-items: center;
+  background: #fff7e6;
+  border-bottom: 1px solid #ecd4a3;
+  color: #3a3021;
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  padding: 12px clamp(16px, 4vw, 56px);
+}
+
+.notice-banner strong {
+  color: #8a4f00;
+  flex: 0 0 auto;
+}
+
+.notice-banner span {
+  line-height: 1.6;
+}
+
 main {
   margin: 0 auto;
   max-width: 1180px;
@@ -280,7 +300,8 @@ textarea:focus {
   margin: 0;
 }
 
-.ranking-list {
+.ranking-list,
+.ranking-summary {
   display: grid;
   gap: 8px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -289,7 +310,8 @@ textarea:focus {
   padding: 0;
 }
 
-.ranking-list li {
+.ranking-list li,
+.ranking-card {
   align-items: center;
   background: #f7f9f8;
   border: 1px solid var(--line);
@@ -299,6 +321,27 @@ textarea:focus {
   grid-template-columns: 46px 1fr auto;
   min-height: 48px;
   padding: 10px 12px;
+}
+
+.ranking-card {
+  grid-template-columns: 1fr;
+  min-height: 82px;
+  padding: 14px 16px;
+}
+
+.ranking-card.wide {
+  color: var(--muted);
+  grid-column: 1 / -1;
+}
+
+.ranking-card span {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.ranking-card strong {
+  font-size: clamp(24px, 4vw, 34px);
+  line-height: 1.15;
 }
 
 .ranking-rank {
@@ -632,6 +675,12 @@ th {
     flex-direction: column;
   }
 
+  .notice-banner {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
   .tabs,
   .student-grid,
   .game-shell,
@@ -639,6 +688,7 @@ th {
   .result-numbers,
   .admin-stats,
   .ranking-list,
+  .ranking-summary,
   .answer-review dl {
     grid-template-columns: 1fr;
     width: 100%;

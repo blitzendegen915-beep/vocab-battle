@@ -14,7 +14,6 @@ const STORAGE = {
 };
 const ADMIN_SESSION_KEY = "vocabBattleAdminUnlocked";
 const ADMIN_PIN_SESSION_KEY = "vocabBattleAdminPin";
-const ADMIN_PASSWORD_FALLBACK = "cwbtavog";
 const ADMIN_PASSWORD_HASH = "75ae5d65da5fbbbcaf62828269c71b049d88755196f6fab97dd3a04a6720fd92";
 const DEFAULT_GAS_URL = "https://script.google.com/macros/s/AKfycbw4wucQB8S-zT530pAJk1ogBWfHBQ4XBb86lebV8yuLCIRghx88Wt4IunD07fAEcgeE/exec";
 
@@ -56,9 +55,13 @@ document.querySelectorAll(".tab").forEach((tab) => {
 
 async function confirmAdminAccess() {
   if (sessionStorage.getItem(ADMIN_SESSION_KEY) === "true") return true;
+  if (!crypto.subtle) {
+    alert("このブラウザでは管理者確認ができません。別のブラウザで開いてください。");
+    return false;
+  }
   const password = prompt("管理者パスワードを入力してください。");
   if (password === null) return false;
-  const isValid = crypto.subtle ? (await sha256(password)) === ADMIN_PASSWORD_HASH : password === ADMIN_PASSWORD_FALLBACK;
+  const isValid = (await sha256(password)) === ADMIN_PASSWORD_HASH;
   if (isValid) {
     sessionStorage.setItem(ADMIN_SESSION_KEY, "true");
     sessionStorage.setItem(ADMIN_PIN_SESSION_KEY, password);
@@ -631,20 +634,32 @@ function renderRanking(data) {
   $("seasonLabel").textContent = season.seasonName || season.seasonId || "現在のシーズン";
   $("adminSeasonName").textContent = season.seasonName || season.seasonId || "-";
 
-  if (!top10.length) {
-    $("rankingList").innerHTML = "<li>ランキングはまだありません。</li>";
-  } else {
-    $("rankingList").innerHTML = top10.map((item) => `
-      <li>
-        <span class="ranking-rank">${item.rank}位</span>
-        <span class="ranking-name">${escapeHtml(item.nickname || "no name")}</span>
-        <span class="ranking-power">${item.power}</span>
-      </li>
-    `).join("");
-  }
-
   if (me && me.rank) {
-    $("myRankStatus").textContent = `あなた: ${me.rank}位 / 今期戦闘力 ${me.power} / 今期最高 ${me.seasonBestPower} / 歴代最高 ${me.allTimeBestPower}`;
+    const topPowers = top10.map((item) => Number(item.power || 0)).filter((power) => power > 0);
+    const upperAverage = topPowers.length
+      ? Math.round(topPowers.reduce((sum, power) => sum + power, 0) / topPowers.length)
+      : Number(me.power || 0);
+    const gapToUpper = Math.max(0, upperAverage - Number(me.power || 0));
+    const playersAbove = Math.max(0, Number(me.rank || 1) - 1);
+    $("rankingList").innerHTML = `
+      <article class="ranking-card">
+        <span>あなたの順位</span>
+        <strong>${me.rank}位</strong>
+      </article>
+      <article class="ranking-card">
+        <span>今期戦闘力</span>
+        <strong>${me.power}</strong>
+      </article>
+      <article class="ranking-card">
+        <span>上位平均との差</span>
+        <strong>${gapToUpper === 0 ? "上位平均以上" : `${gapToUpper}差`}</strong>
+      </article>
+      <article class="ranking-card">
+        <span>自分より上</span>
+        <strong>${playersAbove}人</strong>
+      </article>
+    `;
+    $("myRankStatus").textContent = `今期最高 ${me.seasonBestPower} / 歴代最高 ${me.allTimeBestPower}。他のプレイヤー名は表示されません。`;
     if (currentPlayer && me.playerId === currentPlayer.playerId) {
       saveCurrentPlayer({
         ...currentPlayer,
@@ -657,9 +672,13 @@ function renderRanking(data) {
       });
     }
   } else {
+    $("rankingList").innerHTML = `<article class="ranking-card wide">${currentPlayer
+      ? "あなたの順位はまだありません。1回受験すると表示されます。"
+      : "プレイヤー登録後に自分の順位が表示されます。"
+    }</article>`;
     $("myRankStatus").textContent = currentPlayer
       ? "あなたの順位はまだありません。1回受験すると表示されます。"
-      : "プレイヤー登録後に自分の順位が表示されます。";
+      : "他のプレイヤー名は表示されません。";
   }
 }
 
