@@ -13,6 +13,7 @@ const STORAGE = {
   cachedWordSets: "cachedWordSets",
   selectedWordSet: "selectedWordSet",
   selectedUnit: "selectedUnit",
+  battleMode: "battleMode",
   rangeStart: "rangeStart",
   rangeEnd: "rangeEnd",
   localHistory: "vocabBattleHistory"
@@ -330,6 +331,14 @@ function getSelectedWordSet() {
   return localStorage.getItem(STORAGE.selectedWordSet) || "default";
 }
 
+function getBattleMode() {
+  return localStorage.getItem(STORAGE.battleMode) || "rating";
+}
+
+function isCasualMode() {
+  return getBattleMode() === "casual";
+}
+
 function getSelectedUnitLabel() {
   return getSelectedUnit();
 }
@@ -343,10 +352,11 @@ function getNumberRange() {
 }
 
 function isNumberRangeSpecified() {
-  return Boolean($("rangeStart").value.trim() || $("rangeEnd").value.trim());
+  return isCasualMode();
 }
 
 function getSelectedRangeLabel() {
+  if (!isCasualMode()) return `${getSelectedUnitLabel()} / 全範囲`;
   const { start, end } = getNumberRange();
   const unitLabel = getSelectedUnitLabel();
   const numberLabel = end ? `${start}〜${end}` : `${start}〜最後`;
@@ -400,14 +410,28 @@ function updateActiveWords() {
   const selected = getSelectedUnit();
   const { start, end } = getNumberRange();
   const unitWords = words.filter((word) => getUnitValue(word) === selected);
-  activeWords = unitWords.filter((word) => {
-    const number = Number(word.sourceNumber || 0);
-    return number >= start && (!end || number <= end);
-  });
+  activeWords = isCasualMode()
+    ? unitWords.filter((word) => {
+      const number = Number(word.sourceNumber || 0);
+      return number >= start && (!end || number <= end);
+    })
+    : unitWords;
   $("unitStatus").textContent = words.length
-    ? `教材: ${getSelectedRangeLabel()}（${activeWords.length}語）`
+    ? `${isCasualMode() ? "お気軽モード" : "ガチモード"}: ${getSelectedRangeLabel()}（${activeWords.length}語）`
     : "単語データを読み込むと選べます。";
   updateStartState();
+}
+
+function updateModeUI() {
+  const mode = getBattleMode();
+  document.querySelectorAll('input[name="battleMode"]').forEach((input) => {
+    input.checked = input.value === mode;
+  });
+  const casual = isCasualMode();
+  $("rangeInputs").classList.toggle("disabled", !casual);
+  $("rangeStart").disabled = !casual;
+  $("rangeEnd").disabled = !casual;
+  updateActiveWords();
 }
 
 function saveNumberRange() {
@@ -668,7 +692,7 @@ async function finishQuiz() {
   $("deltaDisplay").textContent = scoreMode ? `${score}点` : (delta >= 0 ? `+${delta}` : String(delta));
   $("avgTimeDisplay").textContent = `${(avgTime / 1000).toFixed(1)}秒`;
   $("resultSummary").textContent = scoreMode
-    ? `範囲指定モードです。1問10点で ${score}点 / ${currentQuiz.length * 10}点。戦闘力とランキングには反映されません。`
+    ? `お気軽モードです。1問10点で ${score}点 / ${currentQuiz.length * 10}点。戦闘力とランキングには反映されません。`
     : `正答率 ${Math.round((correctCount / currentQuiz.length) * 100)}%。戦闘力は ${powerBeforeBattle} から ${powerAfter} になりました。`;
   renderAnswerReview();
 
@@ -692,7 +716,7 @@ async function finishQuiz() {
   saveLocalHistory(record);
 
   if (scoreMode) {
-    $("syncStatus").textContent = "範囲指定モードのため、戦闘力は保存しません。";
+    $("syncStatus").textContent = "お気軽モードのため、戦闘力は保存しません。";
     return;
   }
 
@@ -893,11 +917,20 @@ $("loadCloudWordsButton").addEventListener("click", async () => {
 });
 $("loadRankingButton").addEventListener("click", loadRanking);
 $("sampleButton").addEventListener("click", () => setWords(sampleWords));
+document.querySelectorAll('input[name="battleMode"]').forEach((input) => {
+  input.addEventListener("change", () => {
+    localStorage.setItem(STORAGE.battleMode, input.value);
+    updateModeUI();
+    $("wordStatus").textContent = activeWords.length >= 4
+      ? `${input.value === "casual" ? "お気軽モード" : "ガチモード"}: ${getSelectedRangeLabel()}（${activeWords.length}語）`
+      : "選んだ教材には単語が4語以上必要です。";
+  });
+});
 $("unitSelect").addEventListener("change", () => {
   localStorage.setItem(STORAGE.selectedUnit, $("unitSelect").value);
   updateActiveWords();
   $("wordStatus").textContent = activeWords.length >= 4
-    ? `教材: ${getSelectedRangeLabel()}（${activeWords.length}語）`
+    ? `${isCasualMode() ? "お気軽モード" : "ガチモード"}: ${getSelectedRangeLabel()}（${activeWords.length}語）`
     : "選んだ範囲には単語が4語以上必要です。";
 });
 ["rangeStart", "rangeEnd"].forEach((id) => {
@@ -905,7 +938,7 @@ $("unitSelect").addEventListener("change", () => {
     saveNumberRange();
     updateActiveWords();
     $("wordStatus").textContent = activeWords.length >= 4
-      ? `教材: ${getSelectedRangeLabel()}（${activeWords.length}語）`
+      ? `${isCasualMode() ? "お気軽モード" : "ガチモード"}: ${getSelectedRangeLabel()}（${activeWords.length}語）`
       : "選んだ範囲には単語が4語以上必要です。";
   });
 });
@@ -1005,6 +1038,7 @@ async function boot() {
   loadCachedWordSets();
   renderWordSetOptions();
   loadCachedWords();
+  updateModeUI();
   restoreCurrentPlayer();
   updatePlayerStatus();
   updateStartState();

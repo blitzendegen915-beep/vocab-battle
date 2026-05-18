@@ -58,21 +58,34 @@
 
         <section class="panel range-panel">
           <div>
-            <h2>出題範囲</h2>
-            <p>先生が設定した教材と番号範囲から選べます。</p>
+            <h2>モードと教材</h2>
+            <p>ガチモードは戦闘力に反映。お気軽モードは範囲指定でスコア練習できます。</p>
           </div>
           <div class="range-control">
             <input id="wordSetSelect" type="hidden" value="default" />
+            <div class="mode-select" aria-label="モード選択">
+              <label>
+                <input type="radio" name="battleMode" value="rating" checked />
+                <span>ガチモード</span>
+                <small>戦闘力計測</small>
+              </label>
+              <label>
+                <input type="radio" name="battleMode" value="casual" />
+                <span>お気軽モード</span>
+                <small>範囲指定・スコア</small>
+              </label>
+            </div>
             <label>
               教材
               <select id="unitSelect">
                 <option value="__all__">すべて</option>
               </select>
             </label>
-            <div class="number-range">
+            <div id="rangeInputs" class="number-range disabled">
               <label>開始番号<input id="rangeStart" type="number" min="1" placeholder="例: 301" /></label>
               <label>終了番号<input id="rangeEnd" type="number" min="1" placeholder="例: 500" /></label>
             </div>
+            <p id="rangeGuide" class="range-guide">指定できる範囲: 1〜1900</p>
             <p id="unitStatus" class="status">教材: ターゲット1900</p>
           </div>
         </section>

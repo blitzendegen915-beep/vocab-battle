@@ -230,10 +230,44 @@ textarea:focus {
   min-width: min(100%, 360px);
 }
 
+.mode-select {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.mode-select label {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+  display: grid;
+  gap: 2px;
+  grid-template-columns: auto 1fr;
+  padding: 10px 12px;
+}
+
+.mode-select input {
+  margin: 0;
+}
+
+.mode-select span {
+  font-weight: 800;
+}
+
+.mode-select small {
+  color: var(--muted);
+  grid-column: 2;
+}
+
 .number-range {
   display: grid;
   gap: 10px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.number-range.disabled {
+  opacity: 0.45;
 }
 
 .upload-actions,
