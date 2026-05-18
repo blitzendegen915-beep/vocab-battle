@@ -59,17 +59,12 @@
         <section class="panel range-panel">
           <div>
             <h2>出題範囲</h2>
-            <p>先生がWordsシートのunitに設定した範囲から選べます。</p>
+            <p>先生が設定した教材と番号範囲から選べます。</p>
           </div>
           <div class="range-control">
+            <input id="wordSetSelect" type="hidden" value="default" />
             <label>
-              単語セット
-              <select id="wordSetSelect">
-                <option value="default">標準</option>
-              </select>
-            </label>
-            <label>
-              範囲を選ぶ
+              教材
               <select id="unitSelect">
                 <option value="__all__">すべて</option>
               </select>
@@ -78,7 +73,7 @@
               <label>開始番号<input id="rangeStart" type="number" min="1" placeholder="例: 301" /></label>
               <label>終了番号<input id="rangeEnd" type="number" min="1" placeholder="例: 500" /></label>
             </div>
-            <p id="unitStatus" class="status">単語データを読み込むと選べます。</p>
+            <p id="unitStatus" class="status">教材: ターゲット1900</p>
           </div>
         </section>
 

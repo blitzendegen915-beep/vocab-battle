@@ -311,7 +311,7 @@ function setWords(nextWords, source = "local") {
   renderUnitOptions();
   updateActiveWords();
   $("wordStatus").textContent = activeWords.length >= 4
-    ? `${words.length}語を読み込みました。出題範囲: ${getSelectedRangeLabel()}（${activeWords.length}語）${source === "cloud" ? "（共有）" : ""}`
+    ? `${words.length}語を読み込みました。教材: ${getSelectedRangeLabel()}（${activeWords.length}語）${source === "cloud" ? "（共有）" : ""}`
     : `${words.length}語を読み込みました。選んだ範囲には単語が4語以上必要です。`;
   $("adminWordStatus").textContent = `${words.length}語の端末内単語データがあります。`;
   $("adminWordsCount").textContent = words.length;
@@ -319,11 +319,11 @@ function setWords(nextWords, source = "local") {
 }
 
 function getUnitValue(word) {
-  return String(word.unit || "").trim() || "未分類";
+  return String(word.unit || "").trim() || "ターゲット1900";
 }
 
 function getSelectedUnit() {
-  return localStorage.getItem(STORAGE.selectedUnit) || "__all__";
+  return localStorage.getItem(STORAGE.selectedUnit) || "ターゲット1900";
 }
 
 function getSelectedWordSet() {
@@ -331,8 +331,7 @@ function getSelectedWordSet() {
 }
 
 function getSelectedUnitLabel() {
-  const selected = getSelectedUnit();
-  return selected === "__all__" ? "ターゲット1900" : selected;
+  return getSelectedUnit();
 }
 
 function getNumberRange() {
@@ -351,16 +350,14 @@ function getSelectedRangeLabel() {
   const { start, end } = getNumberRange();
   const unitLabel = getSelectedUnitLabel();
   const numberLabel = end ? `${start}〜${end}` : `${start}〜最後`;
-  const setLabel = wordSets.find((set) => set.setId === getSelectedWordSet())?.label || "標準";
-  return `${setLabel} / ${unitLabel} / ${numberLabel}`;
+  return `${unitLabel} / ${numberLabel}`;
 }
 
 function renderWordSetOptions() {
-  const select = $("wordSetSelect");
+  const input = $("wordSetSelect");
   const selected = getSelectedWordSet();
-  select.innerHTML = wordSets.map((set) => `<option value="${escapeHtml(set.setId)}">${escapeHtml(set.label)}</option>`).join("");
-  select.value = wordSets.some((set) => set.setId === selected) ? selected : wordSets[0].setId;
-  localStorage.setItem(STORAGE.selectedWordSet, select.value);
+  input.value = wordSets.some((set) => set.setId === selected) ? selected : wordSets[0].setId;
+  localStorage.setItem(STORAGE.selectedWordSet, input.value);
 }
 
 function loadCachedWordSets() {
@@ -393,24 +390,22 @@ function renderUnitOptions() {
   const select = $("unitSelect");
   const selected = getSelectedUnit();
   const units = [...new Set(words.map(getUnitValue))].sort((a, b) => a.localeCompare(b, "ja"));
-  select.innerHTML = [
-    `<option value="__all__">ターゲット1900</option>`,
-    ...units.map((unit) => `<option value="${escapeHtml(unit)}">${escapeHtml(unit)}</option>`)
-  ].join("");
-  select.value = units.includes(selected) || selected === "__all__" ? selected : "__all__";
+  const options = units.length ? units : ["ターゲット1900"];
+  select.innerHTML = options.map((unit) => `<option value="${escapeHtml(unit)}">${escapeHtml(unit)}</option>`).join("");
+  select.value = options.includes(selected) ? selected : options[0];
   localStorage.setItem(STORAGE.selectedUnit, select.value);
 }
 
 function updateActiveWords() {
   const selected = getSelectedUnit();
   const { start, end } = getNumberRange();
-  const unitWords = selected === "__all__" ? [...words] : words.filter((word) => getUnitValue(word) === selected);
+  const unitWords = words.filter((word) => getUnitValue(word) === selected);
   activeWords = unitWords.filter((word) => {
     const number = Number(word.sourceNumber || 0);
     return number >= start && (!end || number <= end);
   });
   $("unitStatus").textContent = words.length
-    ? `出題範囲: ${getSelectedRangeLabel()}（${activeWords.length}語）`
+    ? `教材: ${getSelectedRangeLabel()}（${activeWords.length}語）`
     : "単語データを読み込むと選べます。";
   updateStartState();
 }
@@ -898,16 +893,11 @@ $("loadCloudWordsButton").addEventListener("click", async () => {
 });
 $("loadRankingButton").addEventListener("click", loadRanking);
 $("sampleButton").addEventListener("click", () => setWords(sampleWords));
-$("wordSetSelect").addEventListener("change", async () => {
-  localStorage.setItem(STORAGE.selectedWordSet, $("wordSetSelect").value);
-  $("wordStatus").textContent = "単語セットを切り替えています。";
-  await loadCloudWords();
-});
 $("unitSelect").addEventListener("change", () => {
   localStorage.setItem(STORAGE.selectedUnit, $("unitSelect").value);
   updateActiveWords();
   $("wordStatus").textContent = activeWords.length >= 4
-    ? `出題範囲: ${getSelectedRangeLabel()}（${activeWords.length}語）`
+    ? `教材: ${getSelectedRangeLabel()}（${activeWords.length}語）`
     : "選んだ範囲には単語が4語以上必要です。";
 });
 ["rangeStart", "rangeEnd"].forEach((id) => {
@@ -915,7 +905,7 @@ $("unitSelect").addEventListener("change", () => {
     saveNumberRange();
     updateActiveWords();
     $("wordStatus").textContent = activeWords.length >= 4
-      ? `出題範囲: ${getSelectedRangeLabel()}（${activeWords.length}語）`
+      ? `教材: ${getSelectedRangeLabel()}（${activeWords.length}語）`
       : "選んだ範囲には単語が4語以上必要です。";
   });
 });
