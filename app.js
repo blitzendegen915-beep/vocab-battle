@@ -10,6 +10,8 @@ const STORAGE = {
   cachedWords: "cachedWords",
   cachedSettings: "cachedSettings",
   cachedRanking: "cachedRanking",
+  cachedWordSets: "cachedWordSets",
+  selectedWordSet: "selectedWordSet",
   selectedUnit: "selectedUnit",
   rangeStart: "rangeStart",
   rangeEnd: "rangeEnd",
@@ -31,6 +33,7 @@ const sampleWords = [
 
 let words = [];
 let activeWords = [];
+let wordSets = [{ setId: "default", label: "標準" }];
 let settings = { ...DEFAULT_SETTINGS };
 let currentPlayer = null;
 let currentQuiz = [];
@@ -323,9 +326,13 @@ function getSelectedUnit() {
   return localStorage.getItem(STORAGE.selectedUnit) || "__all__";
 }
 
+function getSelectedWordSet() {
+  return localStorage.getItem(STORAGE.selectedWordSet) || "default";
+}
+
 function getSelectedUnitLabel() {
   const selected = getSelectedUnit();
-  return selected === "__all__" ? "すべて" : selected;
+  return selected === "__all__" ? "ターゲット1900" : selected;
 }
 
 function getNumberRange() {
@@ -336,11 +343,50 @@ function getNumberRange() {
   return { start, end };
 }
 
+function isNumberRangeSpecified() {
+  return Boolean($("rangeStart").value.trim() || $("rangeEnd").value.trim());
+}
+
 function getSelectedRangeLabel() {
   const { start, end } = getNumberRange();
   const unitLabel = getSelectedUnitLabel();
   const numberLabel = end ? `${start}〜${end}` : `${start}〜最後`;
-  return `${unitLabel} / ${numberLabel}`;
+  const setLabel = wordSets.find((set) => set.setId === getSelectedWordSet())?.label || "標準";
+  return `${setLabel} / ${unitLabel} / ${numberLabel}`;
+}
+
+function renderWordSetOptions() {
+  const select = $("wordSetSelect");
+  const selected = getSelectedWordSet();
+  select.innerHTML = wordSets.map((set) => `<option value="${escapeHtml(set.setId)}">${escapeHtml(set.label)}</option>`).join("");
+  select.value = wordSets.some((set) => set.setId === selected) ? selected : wordSets[0].setId;
+  localStorage.setItem(STORAGE.selectedWordSet, select.value);
+}
+
+function loadCachedWordSets() {
+  try {
+    const cached = JSON.parse(localStorage.getItem(STORAGE.cachedWordSets) || "[]");
+    if (Array.isArray(cached) && cached.length) {
+      wordSets = cached;
+      renderWordSetOptions();
+    }
+  } catch {
+    localStorage.removeItem(STORAGE.cachedWordSets);
+  }
+}
+
+async function loadCloudWordSets() {
+  if (!getGasUrl()) return;
+  try {
+    const data = await jsonp("wordSets");
+    if (data.ok && Array.isArray(data.wordSets) && data.wordSets.length) {
+      wordSets = data.wordSets;
+      localStorage.setItem(STORAGE.cachedWordSets, JSON.stringify(wordSets));
+      renderWordSetOptions();
+    }
+  } catch {
+    renderWordSetOptions();
+  }
 }
 
 function renderUnitOptions() {
@@ -348,7 +394,7 @@ function renderUnitOptions() {
   const selected = getSelectedUnit();
   const units = [...new Set(words.map(getUnitValue))].sort((a, b) => a.localeCompare(b, "ja"));
   select.innerHTML = [
-    `<option value="__all__">すべて</option>`,
+    `<option value="__all__">ターゲット1900</option>`,
     ...units.map((unit) => `<option value="${escapeHtml(unit)}">${escapeHtml(unit)}</option>`)
   ].join("");
   select.value = units.includes(selected) || selected === "__all__" ? selected : "__all__";
@@ -399,7 +445,7 @@ async function loadCloudWords() {
   }
   $("wordStatus").textContent = "共有単語を読み込んでいます。";
   try {
-    const data = await jsonp("words");
+    const data = await jsonp("words", { setId: getSelectedWordSet() });
     if (!data.ok || !Array.isArray(data.words)) {
       $("wordStatus").textContent = "共有単語を読み込めませんでした。";
       return;
@@ -611,18 +657,24 @@ function calculateDelta(avgTime) {
 
 async function finishQuiz() {
   const avgTime = Math.round(answerLogs.reduce((sum, log) => sum + log.responseTimeMs, 0) / Math.max(1, answerLogs.length));
+  const scoreMode = isNumberRangeSpecified();
+  const score = correctCount * 10;
   const delta = calculateDelta(avgTime);
   const powerAfter = Math.max(0, powerBeforeBattle + delta);
-  const bestPower = Math.max(Number(currentPlayer.bestPower || 1000), powerAfter);
-  currentPlayer = { ...currentPlayer, power: powerAfter, bestPower, lastPlayed: new Date().toISOString() };
-  saveCurrentPlayer(currentPlayer);
+  if (!scoreMode) {
+    const bestPower = Math.max(Number(currentPlayer.bestPower || 1000), powerAfter);
+    currentPlayer = { ...currentPlayer, power: powerAfter, bestPower, lastPlayed: new Date().toISOString() };
+    saveCurrentPlayer(currentPlayer);
+  }
 
   $("questionBox").classList.add("hidden");
   $("resultBox").classList.remove("hidden");
   $("correctDisplay").textContent = `${correctCount} / ${currentQuiz.length}`;
-  $("deltaDisplay").textContent = delta >= 0 ? `+${delta}` : String(delta);
+  $("deltaDisplay").textContent = scoreMode ? `${score}点` : (delta >= 0 ? `+${delta}` : String(delta));
   $("avgTimeDisplay").textContent = `${(avgTime / 1000).toFixed(1)}秒`;
-  $("resultSummary").textContent = `正答率 ${Math.round((correctCount / currentQuiz.length) * 100)}%。戦闘力は ${powerBeforeBattle} から ${powerAfter} になりました。`;
+  $("resultSummary").textContent = scoreMode
+    ? `範囲指定モードです。1問10点で ${score}点 / ${currentQuiz.length * 10}点。戦闘力とランキングには反映されません。`
+    : `正答率 ${Math.round((correctCount / currentQuiz.length) * 100)}%。戦闘力は ${powerBeforeBattle} から ${powerAfter} になりました。`;
   renderAnswerReview();
 
   const record = {
@@ -635,12 +687,19 @@ async function finishQuiz() {
     total: currentQuiz.length,
     accuracy: Math.round((correctCount / currentQuiz.length) * 100),
     powerBefore: powerBeforeBattle,
-    powerAfter,
-    delta,
+    powerAfter: scoreMode ? powerBeforeBattle : powerAfter,
+    delta: scoreMode ? 0 : delta,
     avgTime,
-    answerLogs
+    answerLogs,
+    mode: scoreMode ? "score" : "rating",
+    score
   };
   saveLocalHistory(record);
+
+  if (scoreMode) {
+    $("syncStatus").textContent = "範囲指定モードのため、戦闘力は保存しません。";
+    return;
+  }
 
   if (getGasUrl()) {
     $("syncStatus").textContent = "結果を保存しています。";
@@ -833,11 +892,17 @@ function escapeHtml(value) {
 $("registerButton").addEventListener("click", registerPlayer);
 $("loadCloudWordsButton").addEventListener("click", async () => {
   await loadCloudSettings();
+  await loadCloudWordSets();
   await loadCloudWords();
   loadRanking();
 });
 $("loadRankingButton").addEventListener("click", loadRanking);
 $("sampleButton").addEventListener("click", () => setWords(sampleWords));
+$("wordSetSelect").addEventListener("change", async () => {
+  localStorage.setItem(STORAGE.selectedWordSet, $("wordSetSelect").value);
+  $("wordStatus").textContent = "単語セットを切り替えています。";
+  await loadCloudWords();
+});
 $("unitSelect").addEventListener("change", () => {
   localStorage.setItem(STORAGE.selectedUnit, $("unitSelect").value);
   updateActiveWords();
@@ -947,12 +1012,15 @@ async function boot() {
   updateCloudStatus();
   loadCachedSettings();
   restoreNumberRange();
+  loadCachedWordSets();
+  renderWordSetOptions();
   loadCachedWords();
   restoreCurrentPlayer();
   updatePlayerStatus();
   updateStartState();
   if (getGasUrl()) {
     await loadCloudSettings();
+    await loadCloudWordSets();
     await loadCloudWords();
     await loadRanking();
   }

@@ -63,6 +63,12 @@
           </div>
           <div class="range-control">
             <label>
+              単語セット
+              <select id="wordSetSelect">
+                <option value="default">標準</option>
+              </select>
+            </label>
+            <label>
               範囲を選ぶ
               <select id="unitSelect">
                 <option value="__all__">すべて</option>
@@ -145,7 +151,7 @@
               <p id="resultSummary"></p>
               <div class="result-numbers">
                 <div><span>正解数</span><strong id="correctDisplay">0 / 10</strong></div>
-                <div><span>戦闘力変動</span><strong id="deltaDisplay">+0</strong></div>
+                <div><span>変動 / スコア</span><strong id="deltaDisplay">+0</strong></div>
                 <div><span>平均回答時間</span><strong id="avgTimeDisplay">0.0秒</strong></div>
               </div>
               <section class="answer-review">
