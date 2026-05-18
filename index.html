@@ -36,7 +36,7 @@
             <label>出席番号<input id="studentNo" type="number" min="1" required placeholder="23" /></label>
             <label>ニックネーム<input id="nickname" type="text" required placeholder="dragon" /></label>
             <label>暗証番号<input id="pin" type="password" inputmode="numeric" pattern="[0-9]*" required placeholder="4桁以上" /></label>
-            <button id="registerButton" type="button">始める</button>
+            <button id="registerButton" type="button">続きから始める</button>
           </form>
         </section>
 
@@ -54,6 +54,22 @@
             <button id="sampleButton" type="button" class="secondary">サンプルで試す</button>
           </div>
           <p id="wordStatus" class="status">まだ単語データがありません。</p>
+        </section>
+
+        <section class="panel range-panel">
+          <div>
+            <h2>出題範囲</h2>
+            <p>先生がWordsシートのunitに設定した範囲から選べます。</p>
+          </div>
+          <div class="range-control">
+            <label>
+              範囲を選ぶ
+              <select id="unitSelect">
+                <option value="__all__">すべて</option>
+              </select>
+            </label>
+            <p id="unitStatus" class="status">単語データを読み込むと選べます。</p>
+          </div>
         </section>
 
         <section class="ranking-panel">

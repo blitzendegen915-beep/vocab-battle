@@ -25,7 +25,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -187,7 +188,8 @@ label {
   gap: 6px;
 }
 
-input {
+input,
+select {
   border: 1px solid var(--line);
   border-radius: 8px;
   color: var(--ink);
@@ -212,9 +214,20 @@ input:focus {
   outline: 3px solid rgba(19, 124, 114, 0.16);
 }
 
+select:focus {
+  border-color: var(--primary);
+  outline: 3px solid rgba(19, 124, 114, 0.16);
+}
+
 textarea:focus {
   border-color: var(--primary);
   outline: 3px solid rgba(19, 124, 114, 0.16);
+}
+
+.range-control {
+  display: grid;
+  gap: 8px;
+  min-width: min(100%, 360px);
 }
 
 .upload-actions,

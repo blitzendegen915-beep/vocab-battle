@@ -10,6 +10,7 @@ const STORAGE = {
   cachedWords: "cachedWords",
   cachedSettings: "cachedSettings",
   cachedRanking: "cachedRanking",
+  selectedUnit: "selectedUnit",
   localHistory: "vocabBattleHistory"
 };
 const ADMIN_SESSION_KEY = "vocabBattleAdminUnlocked";
@@ -27,6 +28,7 @@ const sampleWords = [
 ];
 
 let words = [];
+let activeWords = [];
 let settings = { ...DEFAULT_SETTINGS };
 let currentPlayer = null;
 let currentQuiz = [];
@@ -293,11 +295,47 @@ function parsePastedWords(text) {
 function setWords(nextWords, source = "local") {
   words = nextWords;
   localStorage.setItem(STORAGE.cachedWords, JSON.stringify(nextWords));
-  $("wordStatus").textContent = words.length >= 4
-    ? `${words.length}語を読み込みました。${source === "cloud" ? "（共有）" : ""}`
-    : "単語が4語以上必要です。";
+  renderUnitOptions();
+  updateActiveWords();
+  $("wordStatus").textContent = activeWords.length >= 4
+    ? `${words.length}語を読み込みました。出題範囲: ${getSelectedUnitLabel()}（${activeWords.length}語）${source === "cloud" ? "（共有）" : ""}`
+    : `${words.length}語を読み込みました。選んだ範囲には単語が4語以上必要です。`;
   $("adminWordStatus").textContent = `${words.length}語の端末内単語データがあります。`;
   $("adminWordsCount").textContent = words.length;
+  updateStartState();
+}
+
+function getUnitValue(word) {
+  return String(word.unit || "").trim() || "未分類";
+}
+
+function getSelectedUnit() {
+  return localStorage.getItem(STORAGE.selectedUnit) || "__all__";
+}
+
+function getSelectedUnitLabel() {
+  const selected = getSelectedUnit();
+  return selected === "__all__" ? "すべて" : selected;
+}
+
+function renderUnitOptions() {
+  const select = $("unitSelect");
+  const selected = getSelectedUnit();
+  const units = [...new Set(words.map(getUnitValue))].sort((a, b) => a.localeCompare(b, "ja"));
+  select.innerHTML = [
+    `<option value="__all__">すべて</option>`,
+    ...units.map((unit) => `<option value="${escapeHtml(unit)}">${escapeHtml(unit)}</option>`)
+  ].join("");
+  select.value = units.includes(selected) || selected === "__all__" ? selected : "__all__";
+  localStorage.setItem(STORAGE.selectedUnit, select.value);
+}
+
+function updateActiveWords() {
+  const selected = getSelectedUnit();
+  activeWords = selected === "__all__" ? [...words] : words.filter((word) => getUnitValue(word) === selected);
+  $("unitStatus").textContent = words.length
+    ? `出題範囲: ${getSelectedUnitLabel()}（${activeWords.length}語）`
+    : "単語データを読み込むと選べます。";
   updateStartState();
 }
 
@@ -365,7 +403,7 @@ async function loadCloudSettings() {
 }
 
 function updateStartState() {
-  $("startButton").disabled = !(currentPlayer && words.length >= 4);
+  $("startButton").disabled = !(currentPlayer && activeWords.length >= 4);
 }
 
 function updateScorePanel() {
@@ -387,9 +425,9 @@ function shuffle(array) {
 }
 
 function buildQuiz() {
-  const count = Math.min(settings.quizLength, words.length);
-  return shuffle(words).slice(0, count).map((question) => {
-    const distractors = shuffle(words.filter((item) => item.meaning !== question.meaning))
+  const count = Math.min(settings.quizLength, activeWords.length);
+  return shuffle(activeWords).slice(0, count).map((question) => {
+    const distractors = shuffle(activeWords.filter((item) => item.meaning !== question.meaning))
       .slice(0, 3)
       .map((item) => item.meaning);
     return { ...question, choices: shuffle([question.meaning, ...distractors]) };
@@ -416,8 +454,8 @@ async function startQuiz() {
     updatePlayerStatus("クラス、出席番号、ニックネーム、暗証番号を入力してください。");
     return;
   }
-  if (words.length < 4) {
-    $("wordStatus").textContent = "単語が4語以上必要です。";
+  if (activeWords.length < 4) {
+    $("wordStatus").textContent = "選んだ範囲には単語が4語以上必要です。";
     return;
   }
   if (!(await checkDailyAttemptLimit())) return;
@@ -756,6 +794,13 @@ $("loadCloudWordsButton").addEventListener("click", async () => {
 });
 $("loadRankingButton").addEventListener("click", loadRanking);
 $("sampleButton").addEventListener("click", () => setWords(sampleWords));
+$("unitSelect").addEventListener("change", () => {
+  localStorage.setItem(STORAGE.selectedUnit, $("unitSelect").value);
+  updateActiveWords();
+  $("wordStatus").textContent = activeWords.length >= 4
+    ? `出題範囲: ${getSelectedUnitLabel()}（${activeWords.length}語）`
+    : "選んだ範囲には単語が4語以上必要です。";
+});
 $("startButton").addEventListener("click", startQuiz);
 $("restartButton").addEventListener("click", () => {
   $("resultBox").classList.add("hidden");
@@ -785,6 +830,9 @@ $("clearWordsButton").addEventListener("click", () => {
   if (!confirm("この端末に保存した単語データを消去しますか？")) return;
   localStorage.removeItem(STORAGE.cachedWords);
   words = [];
+  activeWords = [];
+  renderUnitOptions();
+  updateActiveWords();
   $("wordStatus").textContent = "まだ単語データがありません。";
   $("adminWordStatus").textContent = "端末内単語データはまだ保存されていません。";
   updateStartState();
