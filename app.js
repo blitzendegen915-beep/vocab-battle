@@ -275,10 +275,16 @@ function normalizeWord(item) {
 }
 
 function withSourceNumbers(list) {
-  return list.map((word, index) => ({
-    ...word,
-    sourceNumber: Number(word.sourceNumber || index + 1)
-  }));
+  const unitCounts = {};
+  return list.map((word, index) => {
+    const unit = getUnitValue(word);
+    unitCounts[unit] = (unitCounts[unit] || 0) + 1;
+    return {
+      ...word,
+      sourceNumber: Number(word.sourceNumber || index + 1),
+      unitNumber: unitCounts[unit]
+    };
+  });
 }
 
 function parseRows(rows) {
@@ -363,6 +369,27 @@ function getSelectedRangeLabel() {
   return `${unitLabel} / ${numberLabel}`;
 }
 
+function getSelectedUnitWords() {
+  const selected = getSelectedUnit();
+  return words.filter((word) => getUnitValue(word) === selected);
+}
+
+function getSelectedUnitMaxNumber(unitWords = getSelectedUnitWords()) {
+  return unitWords.reduce((max, word, index) => {
+    const number = Number(word.unitNumber || index + 1);
+    return Number.isFinite(number) && number > max ? number : max;
+  }, unitWords.length);
+}
+
+function updateRangeGuide(unitWords = getSelectedUnitWords()) {
+  const maxNumber = getSelectedUnitMaxNumber(unitWords);
+  if (!words.length) {
+    $("rangeGuide").textContent = "単語データを読み込むと範囲が表示されます。";
+    return;
+  }
+  $("rangeGuide").textContent = `${getSelectedUnitLabel()}で指定できる範囲: 1〜${maxNumber}`;
+}
+
 function renderWordSetOptions() {
   const input = $("wordSetSelect");
   const selected = getSelectedWordSet();
@@ -407,12 +434,12 @@ function renderUnitOptions() {
 }
 
 function updateActiveWords() {
-  const selected = getSelectedUnit();
   const { start, end } = getNumberRange();
-  const unitWords = words.filter((word) => getUnitValue(word) === selected);
+  const unitWords = getSelectedUnitWords();
+  updateRangeGuide(unitWords);
   activeWords = isCasualMode()
     ? unitWords.filter((word) => {
-      const number = Number(word.sourceNumber || 0);
+      const number = Number(word.unitNumber || 0);
       return number >= start && (!end || number <= end);
     })
     : unitWords;
@@ -429,6 +456,7 @@ function updateModeUI() {
   });
   const casual = isCasualMode();
   $("rangeInputs").classList.toggle("disabled", !casual);
+  $("rangeGuide").classList.toggle("hidden", !casual);
   $("rangeStart").disabled = !casual;
   $("rangeEnd").disabled = !casual;
   updateActiveWords();
