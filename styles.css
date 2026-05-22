@@ -110,6 +110,20 @@ button:disabled {
   color: #102e32;
 }
 
+.season-banner {
+  background: #0f2f35;
+  padding: 14px max(20px, calc((100vw - 1280px) / 2));
+}
+
+.season-banner img {
+  border-radius: 8px;
+  display: block;
+  height: auto;
+  max-height: 260px;
+  object-fit: cover;
+  width: 100%;
+}
+
 .notice-banner {
   align-items: center;
   background: #fff7e6;
@@ -740,6 +754,14 @@ th {
     align-items: flex-start;
     flex-direction: column;
     gap: 4px;
+  }
+
+  .season-banner {
+    padding: 10px 12px;
+  }
+
+  .season-banner img {
+    max-height: 180px;
   }
 
   .tabs,
