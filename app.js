@@ -2,7 +2,9 @@ const DEFAULT_SETTINGS = {
   quizLength: 10,
   timeLimitSec: 8,
   dailyAttemptLimitEnabled: false,
-  dailyAttemptLimit: 5
+  dailyAttemptLimit: 5,
+  seasonAttemptLimitEnabled: true,
+  seasonAttemptLimit: 5
 };
 const STORAGE = {
   gasUrl: "gasWebAppUrl",
@@ -508,11 +510,14 @@ function setSettings(nextSettings, source = "local") {
     quizLength: Number(nextSettings.quizLength || DEFAULT_SETTINGS.quizLength),
     timeLimitSec: Number(nextSettings.timeLimitSec || DEFAULT_SETTINGS.timeLimitSec),
     dailyAttemptLimitEnabled: nextSettings.dailyAttemptLimitEnabled === true || String(nextSettings.dailyAttemptLimitEnabled).toUpperCase() === "TRUE",
-    dailyAttemptLimit: Number(nextSettings.dailyAttemptLimit || DEFAULT_SETTINGS.dailyAttemptLimit)
+    dailyAttemptLimit: Number(nextSettings.dailyAttemptLimit || DEFAULT_SETTINGS.dailyAttemptLimit),
+    seasonAttemptLimitEnabled: nextSettings.seasonAttemptLimitEnabled === true || String(nextSettings.seasonAttemptLimitEnabled).toUpperCase() === "TRUE",
+    seasonAttemptLimit: Number(nextSettings.seasonAttemptLimit || DEFAULT_SETTINGS.seasonAttemptLimit)
   };
   if (!Number.isFinite(settings.quizLength) || settings.quizLength < 1) settings.quizLength = DEFAULT_SETTINGS.quizLength;
   if (!Number.isFinite(settings.timeLimitSec) || settings.timeLimitSec < 1) settings.timeLimitSec = DEFAULT_SETTINGS.timeLimitSec;
   if (!Number.isFinite(settings.dailyAttemptLimit) || settings.dailyAttemptLimit < 1) settings.dailyAttemptLimit = DEFAULT_SETTINGS.dailyAttemptLimit;
+  if (!Number.isFinite(settings.seasonAttemptLimit) || settings.seasonAttemptLimit < 1) settings.seasonAttemptLimit = DEFAULT_SETTINGS.seasonAttemptLimit;
   localStorage.setItem(STORAGE.cachedSettings, JSON.stringify(settings));
   $("timeLimitDisplay").textContent = `${settings.timeLimitSec}秒`;
   $("adminQuizLength").textContent = settings.quizLength;
@@ -572,11 +577,12 @@ function buildQuiz() {
 }
 
 async function checkDailyAttemptLimit() {
-  if (!settings.dailyAttemptLimitEnabled || !currentPlayer || !getGasUrl()) return true;
+  if (isCasualMode() || !currentPlayer || !getGasUrl()) return true;
+  if (!settings.dailyAttemptLimitEnabled && !settings.seasonAttemptLimitEnabled) return true;
   try {
     const data = await jsonp("attemptStatus", { playerId: currentPlayer.playerId });
     if (data.ok && data.allowed === false) {
-      $("wordStatus").textContent = data.message || `今日は${settings.dailyAttemptLimit}回までです。`;
+      $("wordStatus").textContent = data.message || `ガチモードは今シーズン${settings.seasonAttemptLimit}回までです。`;
       return false;
     }
   } catch {
