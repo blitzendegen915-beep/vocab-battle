@@ -23,7 +23,12 @@ const STORAGE = {
 const ADMIN_SESSION_KEY = "vocabBattleAdminUnlocked";
 const ADMIN_PIN_SESSION_KEY = "vocabBattleAdminPin";
 const ADMIN_PASSWORD_HASH = "75ae5d65da5fbbbcaf62828269c71b049d88755196f6fab97dd3a04a6720fd92";
+const CURRENT_SEASON_ID = "drizzle_season";
+const CURRENT_SEASON_NAME = "Drizzle Season";
 const DEFAULT_GAS_URL = "https://script.google.com/macros/s/AKfycbytVz4FsKrCy1160KkpnvksFiluhOW8EtQQtppF1SW1S3X_9-Ki05AjSaoylhro06ti/exec";
+const OLD_GAS_URLS = [
+  "https://script.google.com/macros/s/AKfycbw4wucQB8S-zT530pAJk1ogBWfHBQ4XBb86lebV8yuLCIRghx88Wt4IunD07fAEcgeE/exec"
+];
 
 const sampleWords = [
   { word: "important", meaning: "重要な", difficulty: 6, unit: "Sample", enabled: true },
@@ -91,14 +96,22 @@ function applyGasUrlFromQuery() {
   const params = new URLSearchParams(window.location.search);
   const gasUrl = params.get("gas");
   if (!gasUrl) return;
-  localStorage.setItem(STORAGE.gasUrl, gasUrl);
+  localStorage.setItem(STORAGE.gasUrl, OLD_GAS_URLS.includes(gasUrl) ? DEFAULT_GAS_URL : gasUrl);
   const cleanUrl = new URL(window.location.href);
   cleanUrl.searchParams.delete("gas");
   window.history.replaceState({}, "", cleanUrl.toString());
 }
 
+function migrateOldGasUrl() {
+  const saved = localStorage.getItem(STORAGE.gasUrl);
+  if (!saved || OLD_GAS_URLS.includes(saved)) {
+    localStorage.setItem(STORAGE.gasUrl, DEFAULT_GAS_URL);
+  }
+}
+
 function getGasUrl() {
-  return localStorage.getItem(STORAGE.gasUrl) || DEFAULT_GAS_URL;
+  const saved = localStorage.getItem(STORAGE.gasUrl);
+  return saved && !OLD_GAS_URLS.includes(saved) ? saved : DEFAULT_GAS_URL;
 }
 
 function setGasUrl(url) {
@@ -193,6 +206,11 @@ function restoreCurrentPlayer() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE.currentPlayer) || "null");
     if (!saved) return;
+    if (saved.seasonId && saved.seasonId !== CURRENT_SEASON_ID) {
+      localStorage.removeItem(STORAGE.currentPlayer);
+      currentPlayer = null;
+      return;
+    }
     currentPlayer = saved;
     $("className").value = saved.className || "";
     $("studentNo").value = saved.studentNo || "";
@@ -514,6 +532,7 @@ function setSettings(nextSettings, source = "local") {
     seasonAttemptLimitEnabled: nextSettings.seasonAttemptLimitEnabled === true || String(nextSettings.seasonAttemptLimitEnabled).toUpperCase() === "TRUE",
     seasonAttemptLimit: Number(nextSettings.seasonAttemptLimit || DEFAULT_SETTINGS.seasonAttemptLimit)
   };
+  settings.currentSeason = nextSettings.currentSeason || CURRENT_SEASON_ID;
   if (!Number.isFinite(settings.quizLength) || settings.quizLength < 1) settings.quizLength = DEFAULT_SETTINGS.quizLength;
   if (!Number.isFinite(settings.timeLimitSec) || settings.timeLimitSec < 1) settings.timeLimitSec = DEFAULT_SETTINGS.timeLimitSec;
   if (!Number.isFinite(settings.dailyAttemptLimit) || settings.dailyAttemptLimit < 1) settings.dailyAttemptLimit = DEFAULT_SETTINGS.dailyAttemptLimit;
@@ -528,6 +547,11 @@ function setSettings(nextSettings, source = "local") {
 function loadCachedSettings() {
   try {
     const cached = JSON.parse(localStorage.getItem(STORAGE.cachedSettings) || "null");
+    if (cached && cached.currentSeason && cached.currentSeason !== CURRENT_SEASON_ID) {
+      localStorage.removeItem(STORAGE.cachedSettings);
+      setSettings(DEFAULT_SETTINGS);
+      return;
+    }
     setSettings(cached || DEFAULT_SETTINGS, "cache");
   } catch {
     setSettings(DEFAULT_SETTINGS);
@@ -715,8 +739,17 @@ async function finishQuiz() {
   const delta = calculateDelta(avgTime);
   const powerAfter = Math.max(0, powerBeforeBattle + delta);
   if (!scoreMode) {
-    const bestPower = Math.max(Number(currentPlayer.bestPower || 1000), powerAfter);
-    currentPlayer = { ...currentPlayer, power: powerAfter, bestPower, lastPlayed: new Date().toISOString() };
+    const seasonBestPower = Math.max(Number(currentPlayer.seasonBestPower || 1000), powerAfter);
+    currentPlayer = {
+      ...currentPlayer,
+      seasonId: CURRENT_SEASON_ID,
+      seasonName: CURRENT_SEASON_NAME,
+      power: powerAfter,
+      seasonBestPower,
+      bestPower: seasonBestPower,
+      allTimeBestPower: seasonBestPower,
+      lastPlayed: new Date().toISOString()
+    };
     saveCurrentPlayer(currentPlayer);
   }
 
@@ -825,8 +858,16 @@ function renderRanking(data) {
   const top10 = Array.isArray(data.top10) ? data.top10 : [];
   const me = data.me || null;
 
-  $("seasonLabel").textContent = season.seasonName || season.seasonId || "現在のシーズン";
-  $("adminSeasonName").textContent = season.seasonName || season.seasonId || "-";
+  if (season.seasonId && season.seasonId !== CURRENT_SEASON_ID) {
+    localStorage.removeItem(STORAGE.cachedRanking);
+    $("seasonLabel").textContent = CURRENT_SEASON_NAME;
+    $("rankingList").innerHTML = '<article class="ranking-card wide">Drizzle Seasonの順位はまだありません。</article>';
+    $("myRankStatus").textContent = "古いシーズンの記録は表示しません。";
+    return;
+  }
+
+  $("seasonLabel").textContent = season.seasonName || CURRENT_SEASON_NAME;
+  $("adminSeasonName").textContent = season.seasonName || CURRENT_SEASON_NAME;
 
   if (me && me.rank) {
     const topPowers = top10.map((item) => Number(item.power || 0)).filter((power) => power > 0);
@@ -893,7 +934,12 @@ async function loadRanking() {
   } catch {
     $("myRankStatus").textContent = "ランキングを読み込めませんでした。";
     try {
-      renderRanking(JSON.parse(localStorage.getItem(STORAGE.cachedRanking) || "null"));
+      const cached = JSON.parse(localStorage.getItem(STORAGE.cachedRanking) || "null");
+      if (cached && cached.season && cached.season.seasonId === CURRENT_SEASON_ID) renderRanking(cached);
+      else {
+        localStorage.removeItem(STORAGE.cachedRanking);
+        $("seasonLabel").textContent = CURRENT_SEASON_NAME;
+      }
     } catch {
       // no cached ranking
     }
@@ -1066,6 +1112,8 @@ $("exportButton").addEventListener("click", () => {
 
 async function boot() {
   applyGasUrlFromQuery();
+  migrateOldGasUrl();
+  localStorage.removeItem(STORAGE.cachedRanking);
   updateCloudStatus();
   loadCachedSettings();
   restoreNumberRange();
