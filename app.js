@@ -18,13 +18,15 @@ const STORAGE = {
   battleMode: "battleMode",
   rangeStart: "rangeStart",
   rangeEnd: "rangeEnd",
-  localHistory: "vocabBattleHistory"
+  localHistory: "vocabBattleHistory",
+  clientVersion: "vocabBattleClientVersion"
 };
 const ADMIN_SESSION_KEY = "vocabBattleAdminUnlocked";
 const ADMIN_PIN_SESSION_KEY = "vocabBattleAdminPin";
 const ADMIN_PASSWORD_HASH = "75ae5d65da5fbbbcaf62828269c71b049d88755196f6fab97dd3a04a6720fd92";
 const CURRENT_SEASON_ID = "drizzle_season";
 const CURRENT_SEASON_NAME = "Drizzle Season";
+const CLIENT_DATA_VERSION = "drizzle_season_attempts_v1";
 const DEFAULT_GAS_URL = "https://script.google.com/macros/s/AKfycbytVz4FsKrCy1160KkpnvksFiluhOW8EtQQtppF1SW1S3X_9-Ki05AjSaoylhro06ti/exec";
 const OLD_GAS_URLS = [
   "https://script.google.com/macros/s/AKfycbw4wucQB8S-zT530pAJk1ogBWfHBQ4XBb86lebV8yuLCIRghx88Wt4IunD07fAEcgeE/exec"
@@ -54,6 +56,7 @@ let questionStartedAt = 0;
 let timerId = null;
 let locked = false;
 let powerBeforeBattle = 1000;
+let activeAttemptId = "";
 
 const $ = (id) => document.getElementById(id);
 
@@ -96,27 +99,46 @@ function applyGasUrlFromQuery() {
   const params = new URLSearchParams(window.location.search);
   const gasUrl = params.get("gas");
   if (!gasUrl) return;
-  localStorage.setItem(STORAGE.gasUrl, OLD_GAS_URLS.includes(gasUrl) ? DEFAULT_GAS_URL : gasUrl);
+  localStorage.setItem(STORAGE.gasUrl, normalizeGasUrl(gasUrl));
   const cleanUrl = new URL(window.location.href);
   cleanUrl.searchParams.delete("gas");
   window.history.replaceState({}, "", cleanUrl.toString());
 }
 
+function normalizeGasUrl(url) {
+  const trimmed = String(url || "").trim();
+  if (!trimmed || OLD_GAS_URLS.includes(trimmed)) return DEFAULT_GAS_URL;
+  return trimmed === DEFAULT_GAS_URL ? trimmed : DEFAULT_GAS_URL;
+}
+
 function migrateOldGasUrl() {
   const saved = localStorage.getItem(STORAGE.gasUrl);
-  if (!saved || OLD_GAS_URLS.includes(saved)) {
+  if (normalizeGasUrl(saved) !== saved) {
     localStorage.setItem(STORAGE.gasUrl, DEFAULT_GAS_URL);
   }
 }
 
 function getGasUrl() {
   const saved = localStorage.getItem(STORAGE.gasUrl);
-  return saved && !OLD_GAS_URLS.includes(saved) ? saved : DEFAULT_GAS_URL;
+  return normalizeGasUrl(saved);
 }
 
 function setGasUrl(url) {
-  localStorage.setItem(STORAGE.gasUrl, url.trim());
+  localStorage.setItem(STORAGE.gasUrl, normalizeGasUrl(url));
   updateCloudStatus();
+}
+
+function migrateClientData() {
+  if (localStorage.getItem(STORAGE.clientVersion) === CLIENT_DATA_VERSION) return;
+  [
+    STORAGE.currentPlayer,
+    STORAGE.cachedWords,
+    STORAGE.cachedSettings,
+    STORAGE.cachedRanking,
+    STORAGE.cachedWordSets
+  ].forEach((key) => localStorage.removeItem(key));
+  localStorage.setItem(STORAGE.gasUrl, DEFAULT_GAS_URL);
+  localStorage.setItem(STORAGE.clientVersion, CLIENT_DATA_VERSION);
 }
 
 function updateCloudStatus(message = "") {
@@ -206,7 +228,7 @@ function restoreCurrentPlayer() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE.currentPlayer) || "null");
     if (!saved) return;
-    if (saved.seasonId && saved.seasonId !== CURRENT_SEASON_ID) {
+    if (!saved.seasonId || saved.seasonId !== CURRENT_SEASON_ID) {
       localStorage.removeItem(STORAGE.currentPlayer);
       currentPlayer = null;
       return;
@@ -600,20 +622,31 @@ function buildQuiz() {
   });
 }
 
-async function checkDailyAttemptLimit() {
+async function reserveRatingAttempt() {
   if (isCasualMode() || !currentPlayer || !getGasUrl()) return true;
   if (!settings.dailyAttemptLimitEnabled && !settings.seasonAttemptLimitEnabled) return true;
+  $("wordStatus").textContent = "受験回数を確認しています。";
   try {
-    const data = await jsonp("attemptStatus", { playerId: currentPlayer.playerId });
+    const data = await jsonp("startAttempt", {
+      playerId: currentPlayer.playerId,
+      className: currentPlayer.className || "",
+      studentNo: currentPlayer.studentNo || "",
+      nickname: currentPlayer.nickname || ""
+    });
     if (data.ok && data.allowed === false) {
       $("wordStatus").textContent = data.message || `ガチモードは今シーズン${settings.seasonAttemptLimit}回までです。`;
       return false;
     }
+    if (data.ok && data.attemptId) {
+      activeAttemptId = data.attemptId;
+      return true;
+    }
+    $("wordStatus").textContent = data.message || "受験回数を確認できませんでした。もう一度押してください。";
+    return false;
   } catch {
-    $("wordStatus").textContent = "受験回数を確認できませんでした。";
+    $("wordStatus").textContent = "受験回数を確認できませんでした。通信を確認してもう一度押してください。";
     return false;
   }
-  return true;
 }
 
 async function startQuiz() {
@@ -625,7 +658,8 @@ async function startQuiz() {
     $("wordStatus").textContent = "選んだ範囲には単語が4語以上必要です。";
     return;
   }
-  if (!(await checkDailyAttemptLimit())) return;
+  activeAttemptId = "";
+  if (!(await reserveRatingAttempt())) return;
   currentQuiz = buildQuiz();
   currentIndex = 0;
   correctCount = 0;
@@ -778,7 +812,8 @@ async function finishQuiz() {
     avgTime,
     answerLogs,
     mode: scoreMode ? "score" : "rating",
-    score
+    score,
+    attemptId: activeAttemptId
   };
   saveLocalHistory(record);
 
@@ -792,6 +827,7 @@ async function finishQuiz() {
     try {
       await postToCloud({ action: "result", record });
       $("syncStatus").textContent = "結果を保存しました。";
+      activeAttemptId = "";
       loadRanking();
     } catch {
       $("syncStatus").textContent = "結果の保存に失敗しました。先生に伝えてください。";
@@ -1112,6 +1148,7 @@ $("exportButton").addEventListener("click", () => {
 
 async function boot() {
   applyGasUrlFromQuery();
+  migrateClientData();
   migrateOldGasUrl();
   localStorage.removeItem(STORAGE.cachedRanking);
   updateCloudStatus();
