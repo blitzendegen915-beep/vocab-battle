@@ -641,11 +641,11 @@ async function reserveRatingAttempt() {
       activeAttemptId = "";
       return true;
     }
-    $("wordStatus").textContent = data.message || "受験回数を確認できませんでした。もう一度押してください。";
-    return false;
+    $("wordStatus").textContent = data.message || "受験回数を確認できませんでしたが、テストを開始します。結果保存時に確認します。";
+    return true;
   } catch {
-    $("wordStatus").textContent = "受験回数を確認できませんでした。通信を確認してもう一度押してください。";
-    return false;
+    $("wordStatus").textContent = "受験回数を確認できませんでしたが、テストを開始します。結果保存時に確認します。";
+    return true;
   }
 }
 
