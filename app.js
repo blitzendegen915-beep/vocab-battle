@@ -58,6 +58,8 @@ let timerId = null;
 let locked = false;
 let powerBeforeBattle = 1000;
 let activeAttemptId = "";
+let retryWrongMode = false;
+let quizRunId = 0;
 
 const $ = (id) => document.getElementById(id);
 
@@ -506,6 +508,24 @@ function updateModeUI() {
   updateActiveWords();
 }
 
+function resetQuizSurfaceForSelectionChange() {
+  retryWrongMode = false;
+  activeAttemptId = "";
+  quizRunId += 1;
+  window.clearInterval(timerId);
+  locked = true;
+  currentQuiz = [];
+  currentIndex = 0;
+  correctCount = 0;
+  earnedWeight = 0;
+  totalWeight = 0;
+  answerLogs = [];
+  $("questionBox").classList.add("hidden");
+  $("resultBox").classList.add("hidden");
+  $("startBox").classList.remove("hidden");
+  updateScorePanel();
+}
+
 function saveNumberRange() {
   const start = $("rangeStart").value.trim();
   const end = $("rangeEnd").value.trim();
@@ -633,6 +653,8 @@ async function reserveRatingAttempt() {
 }
 
 async function startQuiz() {
+  retryWrongMode = false;
+  quizRunId += 1;
   if (!currentPlayer) {
     updatePlayerStatus("クラス、出席番号、ニックネーム、暗証番号を入力してください。");
     return;
@@ -739,7 +761,9 @@ function answer(choice, timedOut, selectedButton) {
 
   currentIndex += 1;
   updateScorePanel();
+  const runId = quizRunId;
   window.setTimeout(() => {
+    if (runId !== quizRunId) return;
     if (currentIndex >= currentQuiz.length) finishQuiz();
     else showQuestion();
   }, 850);
@@ -755,6 +779,7 @@ function calculateDelta(avgTime) {
 }
 
 async function finishQuiz() {
+  const wasRetryWrongMode = retryWrongMode;
   const avgTime = Math.round(answerLogs.reduce((sum, log) => sum + log.responseTimeMs, 0) / Math.max(1, answerLogs.length));
   const scoreMode = isNumberRangeSpecified();
   const score = correctCount * 10;
@@ -784,6 +809,11 @@ async function finishQuiz() {
     ? `お気軽モードです。1問10点で ${score}点 / ${currentQuiz.length * 10}点。戦闘力とランキングには反映されません。`
     : `正答率 ${Math.round((correctCount / currentQuiz.length) * 100)}%。戦闘力は ${powerBeforeBattle} から ${powerAfter} になりました。`;
   renderAnswerReview();
+  if (wasRetryWrongMode) {
+    retryWrongMode = false;
+    updateModeUI();
+    $("wordStatus").textContent = "間違えた単語の再挑戦が終わりました。ガチモードかお気軽モードを選んで次を始められます。";
+  }
 
   const record = {
     date: new Date().toLocaleString("ja-JP"),
@@ -876,6 +906,8 @@ async function retryWrongWords() {
       .slice(0, 3);
     return { ...question, choices: shuffle([question.meaning, ...distractors]) };
   });
+  retryWrongMode = true;
+  quizRunId += 1;
   localStorage.setItem(STORAGE.battleMode, "casual");
   document.querySelectorAll('input[name="battleMode"]').forEach((input) => {
     input.checked = input.value === "casual";
@@ -1152,15 +1184,20 @@ function escapeHtml(value) {
 
 $("registerButton").addEventListener("click", registerPlayer);
 $("loadCloudWordsButton").addEventListener("click", async () => {
+  resetQuizSurfaceForSelectionChange();
   await loadCloudSettings();
   await loadCloudWordSets();
   await loadCloudWords();
   loadRanking();
 });
 $("loadRankingButton").addEventListener("click", loadRanking);
-$("sampleButton").addEventListener("click", () => setWords(sampleWords));
+$("sampleButton").addEventListener("click", () => {
+  resetQuizSurfaceForSelectionChange();
+  setWords(sampleWords);
+});
 document.querySelectorAll('input[name="battleMode"]').forEach((input) => {
   input.addEventListener("change", () => {
+    resetQuizSurfaceForSelectionChange();
     localStorage.setItem(STORAGE.battleMode, input.value);
     updateModeUI();
     $("wordStatus").textContent = activeWords.length >= 4
@@ -1169,6 +1206,7 @@ document.querySelectorAll('input[name="battleMode"]').forEach((input) => {
   });
 });
 $("unitSelect").addEventListener("change", () => {
+  resetQuizSurfaceForSelectionChange();
   localStorage.setItem(STORAGE.selectedUnit, $("unitSelect").value);
   updateActiveWords();
   $("wordStatus").textContent = activeWords.length >= 4
@@ -1177,6 +1215,7 @@ $("unitSelect").addEventListener("change", () => {
 });
 ["rangeStart", "rangeEnd"].forEach((id) => {
   $(id).addEventListener("input", () => {
+    resetQuizSurfaceForSelectionChange();
     saveNumberRange();
     updateActiveWords();
     $("wordStatus").textContent = activeWords.length >= 4
@@ -1188,6 +1227,8 @@ $("startButton").addEventListener("click", startQuiz);
 $("retryWrongButton").addEventListener("click", retryWrongWords);
 $("copyAnswersButton").addEventListener("click", copyAnswerReview);
 $("restartButton").addEventListener("click", () => {
+  retryWrongMode = false;
+  updateModeUI();
   $("resultBox").classList.add("hidden");
   $("startBox").classList.remove("hidden");
   currentIndex = 0;
@@ -1196,6 +1237,7 @@ $("restartButton").addEventListener("click", () => {
 });
 
 $("fileInput").addEventListener("change", async (event) => {
+  resetQuizSurfaceForSelectionChange();
   const file = event.target.files[0];
   if (!file) return;
   const buffer = await file.arrayBuffer();
