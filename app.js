@@ -1,4 +1,4 @@
-const DEFAULT_SETTINGS = {
+﻿const DEFAULT_SETTINGS = {
   quizLength: 10,
   timeLimitSec: 8,
   dailyAttemptLimitEnabled: true,
@@ -878,10 +878,18 @@ async function retryWrongWords() {
     .filter((log) => !log.isCorrect)
     .map((log) => currentQuiz.find((word) => word.word === log.word))
     .filter(Boolean);
-  if (wrongWords.length < 4) {
-    alert("4語以上間違えたときに再挑戦できます。");
+  if (wrongWords.length < 1) {
+    alert("間違えた単語がありません。");
     return;
   }
+  const distractorPool = words.length ? words : currentQuiz;
+  currentQuiz = wrongWords.map((question) => {
+    const distractors = shuffle(distractorPool.filter((item) => item.meaning !== question.meaning))
+      .map((item) => item.meaning)
+      .filter((meaning, index, array) => meaning && array.indexOf(meaning) === index)
+      .slice(0, 3);
+    return { ...question, choices: shuffle([question.meaning, ...distractors]) };
+  });
   localStorage.setItem(STORAGE.battleMode, "casual");
   document.querySelectorAll('input[name="battleMode"]').forEach((input) => {
     input.checked = input.value === "casual";
@@ -892,11 +900,18 @@ async function retryWrongWords() {
   $("rangeEnd").disabled = true;
   activeWords = wrongWords;
   $("resultBox").classList.add("hidden");
-  $("startBox").classList.remove("hidden");
-  $("wordStatus").textContent = `間違えた単語${wrongWords.length}語で再挑戦できます。お気軽モードなので戦闘力には反映しません。`;
-  updateStartState();
+  $("startBox").classList.add("hidden");
+  $("questionBox").classList.remove("hidden");
+  currentIndex = 0;
+  correctCount = 0;
+  earnedWeight = 0;
+  answerLogs = [];
+  totalWeight = currentQuiz.reduce((sum, item) => sum + item.difficulty, 0);
+  powerBeforeBattle = Number(currentPlayer?.power || 1000);
+  $("wordStatus").textContent = `間違えた単語${wrongWords.length}語だけ再挑戦中です。お気軽モードなので戦闘力には反映しません。`;
+  updateScorePanel();
+  showQuestion();
 }
-
 async function refreshAttemptStatus() {
   if (!currentPlayer || !getGasUrl()) return;
   try {
@@ -1320,3 +1335,4 @@ async function boot() {
 }
 
 boot();
+
