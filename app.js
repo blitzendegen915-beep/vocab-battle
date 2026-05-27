@@ -26,7 +26,7 @@ const ADMIN_PIN_SESSION_KEY = "vocabBattleAdminPin";
 const ADMIN_PASSWORD_HASH = "75ae5d65da5fbbbcaf62828269c71b049d88755196f6fab97dd3a04a6720fd92";
 const CURRENT_SEASON_ID = "drizzle_season";
 const CURRENT_SEASON_NAME = "Drizzle Season";
-const CLIENT_DATA_VERSION = "drizzle_season_attempts_v1";
+const CLIENT_DATA_VERSION = "drizzle_season_attempts_v2";
 const DEFAULT_GAS_URL = "https://script.google.com/macros/s/AKfycbytVz4FsKrCy1160KkpnvksFiluhOW8EtQQtppF1SW1S3X_9-Ki05AjSaoylhro06ti/exec";
 const OLD_GAS_URLS = [
   "https://script.google.com/macros/s/AKfycbw4wucQB8S-zT530pAJk1ogBWfHBQ4XBb86lebV8yuLCIRghx88Wt4IunD07fAEcgeE/exec"
