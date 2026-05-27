@@ -596,7 +596,7 @@ async function loadCloudSettings() {
 }
 
 function updateStartState() {
-  $("startButton").disabled = !(currentPlayer && activeWords.length >= 4);
+  $("startButton").disabled = !(currentPlayer && (activeWords.length >= 4 || words.length >= 4));
 }
 
 function updateScorePanel() {
@@ -628,25 +628,8 @@ function buildQuiz() {
 }
 
 async function reserveRatingAttempt() {
-  if (isCasualMode() || !currentPlayer || !getGasUrl()) return true;
-  if (!settings.dailyAttemptLimitEnabled && !settings.seasonAttemptLimitEnabled) return true;
-  $("wordStatus").textContent = "受験回数を確認しています。";
-  try {
-    const data = await jsonp("attemptStatus", { playerId: currentPlayer.playerId });
-    if (data.ok && data.allowed === false) {
-      $("wordStatus").textContent = data.message || `ガチモードは1日${settings.dailyAttemptLimit}回までです。`;
-      return false;
-    }
-    if (data.ok && data.allowed !== false) {
-      activeAttemptId = "";
-      return true;
-    }
-    $("wordStatus").textContent = data.message || "受験回数を確認できませんでしたが、テストを開始します。結果保存時に確認します。";
-    return true;
-  } catch {
-    $("wordStatus").textContent = "受験回数を確認できませんでしたが、テストを開始します。結果保存時に確認します。";
-    return true;
-  }
+  activeAttemptId = "";
+  return true;
 }
 
 async function startQuiz() {
@@ -655,8 +638,13 @@ async function startQuiz() {
     return;
   }
   if (activeWords.length < 4) {
-    $("wordStatus").textContent = "選んだ範囲には単語が4語以上必要です。";
-    return;
+    if (words.length >= 4) {
+      activeWords = [...words];
+      $("wordStatus").textContent = "選んだ範囲の単語が不足していたため、読み込み済み単語から開始します。";
+    } else {
+      $("wordStatus").textContent = "単語が4語以上必要です。共有単語を読み込んでください。";
+      return;
+    }
   }
   activeAttemptId = "";
   if (!(await reserveRatingAttempt())) return;
