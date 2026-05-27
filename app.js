@@ -223,6 +223,7 @@ function saveCurrentPlayer(player) {
   updatePlayerStatus();
   updateScorePanel();
   updateStartState();
+  refreshAttemptStatus();
 }
 
 function restoreCurrentPlayer() {
@@ -858,6 +859,58 @@ function renderAnswerReview() {
   }).join("");
 }
 
+async function copyAnswerReview() {
+  const lines = answerLogs.map((log, index) => {
+    const selected = log.timedOut ? "時間切れ" : (log.selectedMeaning || "未回答");
+    const mark = log.isCorrect ? "○" : "×";
+    return `${index + 1}. ${mark} ${log.word} / 正解: ${log.correctMeaning} / 回答: ${selected}`;
+  });
+  if (!lines.length) {
+    alert("コピーする答え合わせがありません。");
+    return;
+  }
+  await navigator.clipboard.writeText(lines.join("\n"));
+  $("syncStatus").textContent = "答え一覧をコピーしました。";
+}
+
+async function retryWrongWords() {
+  const wrongWords = answerLogs
+    .filter((log) => !log.isCorrect)
+    .map((log) => currentQuiz.find((word) => word.word === log.word))
+    .filter(Boolean);
+  if (wrongWords.length < 4) {
+    alert("4語以上間違えたときに再挑戦できます。");
+    return;
+  }
+  localStorage.setItem(STORAGE.battleMode, "casual");
+  document.querySelectorAll('input[name="battleMode"]').forEach((input) => {
+    input.checked = input.value === "casual";
+  });
+  $("rangeInputs").classList.add("disabled");
+  $("rangeGuide").classList.add("hidden");
+  $("rangeStart").disabled = true;
+  $("rangeEnd").disabled = true;
+  activeWords = wrongWords;
+  $("resultBox").classList.add("hidden");
+  $("startBox").classList.remove("hidden");
+  $("wordStatus").textContent = `間違えた単語${wrongWords.length}語で再挑戦できます。お気軽モードなので戦闘力には反映しません。`;
+  updateStartState();
+}
+
+async function refreshAttemptStatus() {
+  if (!currentPlayer || !getGasUrl()) return;
+  try {
+    const data = await jsonp("attemptStatus", { playerId: currentPlayer.playerId });
+    if (!data.ok || !data.enabled) return;
+    const used = Number(data.countSeason || data.countToday || 0);
+    const limit = Number(data.limit || settings.seasonAttemptLimit || 5);
+    const left = Math.max(0, limit - used);
+    $("syncStatus").textContent = `ガチモード残り ${left} / ${limit} 回`;
+  } catch {
+    // keep the normal status message when attempt status cannot be loaded
+  }
+}
+
 function readLocalHistory() {
   try {
     return JSON.parse(localStorage.getItem(STORAGE.localHistory) || "[]");
@@ -994,7 +1047,7 @@ async function renderHistory() {
     return;
   }
   $("historyBody").innerHTML = history.map((item) => `
-    <tr>
+    <tr data-player-id="${escapeHtml(item.playerId || "")}" data-nickname="${escapeHtml(item.nickname || "")}">
       <td>${escapeHtml(item.date)}</td>
       <td>${escapeHtml(item.nickname || item.playerId || "")}</td>
       <td>${escapeHtml(item.className || "")}</td>
@@ -1006,6 +1059,77 @@ async function renderHistory() {
       <td>${item.avgTime ? `${(Number(item.avgTime) / 1000).toFixed(1)}秒` : ""}</td>
     </tr>
   `).join("");
+}
+
+function getAdminPin() {
+  return sessionStorage.getItem(ADMIN_PIN_SESSION_KEY) || "";
+}
+
+async function runAdminPlayerAction(action) {
+  const playerId = $("adminTargetPlayerId").value.trim();
+  const nickname = $("adminNewNickname").value.trim();
+  if (!playerId) {
+    $("adminToolStatus").textContent = "対象プレイヤーIDを入力してください。";
+    return;
+  }
+  const labels = {
+    reset: "戦闘力を1000に戻します",
+    rename: "名前を変更します",
+    hide: "ランキングから除外します",
+    show: "ランキングに戻します"
+  };
+  if (action === "rename" && !nickname) {
+    $("adminToolStatus").textContent = "新しい表示名を入力してください。";
+    return;
+  }
+  if (!confirm(`${labels[action] || "操作します"}。よろしいですか？`)) return;
+
+  $("adminToolStatus").textContent = "処理しています。";
+  try {
+    const data = await jsonp("adminPlayerAction", {
+      adminPin: getAdminPin(),
+      playerId,
+      action,
+      nickname
+    });
+    $("adminToolStatus").textContent = data.ok ? "完了しました。" : (data.message || "処理できませんでした。");
+    await loadRanking();
+    renderHistory();
+  } catch {
+    $("adminToolStatus").textContent = "通信に失敗しました。";
+  }
+}
+
+function downloadCsv(filename, header, rows) {
+  const csv = [header, ...rows].map((row) => row.map((cell) => `"${String(cell ?? "").replaceAll('"', '""')}"`).join(",")).join("\n");
+  const blob = new Blob([`\ufeff${csv}`], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+async function exportCloudBackup() {
+  $("adminSaveStatus").textContent = "バックアップを作成しています。";
+  try {
+    const data = await jsonp("backup", { adminPin: getAdminPin() });
+    if (!data.ok) {
+      $("adminSaveStatus").textContent = data.message || "バックアップに失敗しました。";
+      return;
+    }
+    const rows = [];
+    Object.entries(data.sheets || {}).forEach(([sheetName, sheetRows]) => {
+      rows.push([`--- ${sheetName} ---`]);
+      sheetRows.forEach((row) => rows.push(row));
+      rows.push([]);
+    });
+    downloadCsv(`vocab-battle-backup-${new Date().toISOString().slice(0, 10)}.csv`, ["backup"], rows);
+    $("adminSaveStatus").textContent = "バックアップを保存しました。";
+  } catch {
+    $("adminSaveStatus").textContent = "バックアップに失敗しました。";
+  }
 }
 
 function refreshAdmin() {
@@ -1060,6 +1184,8 @@ $("unitSelect").addEventListener("change", () => {
   });
 });
 $("startButton").addEventListener("click", startQuiz);
+$("retryWrongButton").addEventListener("click", retryWrongWords);
+$("copyAnswersButton").addEventListener("click", copyAnswerReview);
 $("restartButton").addEventListener("click", () => {
   $("resultBox").classList.add("hidden");
   $("startBox").classList.remove("hidden");
@@ -1109,6 +1235,28 @@ $("clearGasUrlButton").addEventListener("click", () => {
 });
 
 $("refreshAdminButton").addEventListener("click", refreshAdmin);
+$("historyBody").addEventListener("click", (event) => {
+  const row = event.target.closest("tr[data-player-id]");
+  if (!row) return;
+  $("adminTargetPlayerId").value = row.dataset.playerId || "";
+  $("adminNewNickname").value = row.dataset.nickname || "";
+  $("adminToolStatus").textContent = "履歴から対象プレイヤーを選びました。";
+});
+$("adminResetPowerButton").addEventListener("click", () => runAdminPlayerAction("reset"));
+$("adminRenameButton").addEventListener("click", () => runAdminPlayerAction("rename"));
+$("adminHideRankingButton").addEventListener("click", () => runAdminPlayerAction("hide"));
+$("adminShowRankingButton").addEventListener("click", () => runAdminPlayerAction("show"));
+$("cloudBackupButton").addEventListener("click", exportCloudBackup);
+$("localBackupButton").addEventListener("click", () => {
+  const history = readLocalHistory();
+  if (!history.length) {
+    alert("この端末に保存する履歴がありません。");
+    return;
+  }
+  const header = ["date", "playerId", "className", "studentNo", "nickname", "correct", "total", "accuracy", "powerBefore", "powerAfter", "delta", "avgTime"];
+  const rows = history.map((item) => header.map((key) => item[key] ?? ""));
+  downloadCsv("vocab-battle-local-history.csv", header, rows);
+});
 $("clearButton").addEventListener("click", () => {
   if (!confirm("この端末の履歴を消去しますか？")) return;
   localStorage.removeItem(STORAGE.localHistory);

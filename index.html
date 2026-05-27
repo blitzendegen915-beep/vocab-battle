@@ -170,7 +170,11 @@
                 <h3>答え合わせ</h3>
                 <div id="answerReviewList" class="answer-review-list"></div>
               </section>
-              <button id="restartButton" type="button">もう一度</button>
+              <div class="result-actions">
+                <button id="retryWrongButton" type="button" class="secondary">間違えた単語だけ再挑戦</button>
+                <button id="copyAnswersButton" type="button" class="secondary">答え一覧をコピー</button>
+                <button id="restartButton" type="button">もう一度</button>
+              </div>
             </div>
           </section>
         </section>
@@ -211,6 +215,35 @@
           <div><span>制限時間</span><strong id="adminTimeLimit">8秒</strong></div>
           <div><span>最近の結果件数</span><strong id="adminHistoryCount">0</strong></div>
           <div><span>保存状態</span><strong id="adminSaveStatus">未設定</strong></div>
+        </section>
+
+        <section class="panel admin-tools-panel">
+          <div>
+            <h2>プレイヤー管理</h2>
+            <p>ランキング荒らしや名前変更に対応します。対象は履歴のプレイヤーIDを使うのが確実です。</p>
+          </div>
+          <div class="admin-tool-form">
+            <label>対象プレイヤーID<input id="adminTargetPlayerId" type="text" placeholder="1A-23-dragon" /></label>
+            <label>新しい表示名<input id="adminNewNickname" type="text" placeholder="必要なときだけ入力" /></label>
+            <div class="word-admin-actions">
+              <button id="adminResetPowerButton" type="button" class="secondary">戦闘力を1000に戻す</button>
+              <button id="adminRenameButton" type="button" class="secondary">名前を変更</button>
+              <button id="adminHideRankingButton" type="button" class="danger">ランキングから除外</button>
+              <button id="adminShowRankingButton" type="button" class="secondary">ランキングに戻す</button>
+            </div>
+            <p id="adminToolStatus" class="status">プレイヤーIDを入力してください。</p>
+          </div>
+        </section>
+
+        <section class="panel backup-panel">
+          <div>
+            <h2>バックアップ</h2>
+            <p>共有データをCSVとして保存します。シーズン切替前に実行してください。</p>
+          </div>
+          <div class="admin-actions">
+            <button id="cloudBackupButton" type="button">共有データをバックアップ</button>
+            <button id="localBackupButton" type="button" class="secondary">この端末の履歴を保存</button>
+          </div>
         </section>
 
         <section class="panel word-admin-panel">
