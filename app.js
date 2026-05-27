@@ -557,6 +557,9 @@ function setSettings(nextSettings, source = "local") {
     seasonAttemptLimit: Number(nextSettings.seasonAttemptLimit || DEFAULT_SETTINGS.seasonAttemptLimit)
   };
   settings.currentSeason = nextSettings.currentSeason || CURRENT_SEASON_ID;
+  settings.dailyAttemptLimitEnabled = true;
+  settings.dailyAttemptLimit = 5;
+  settings.seasonAttemptLimitEnabled = false;
   if (!Number.isFinite(settings.quizLength) || settings.quizLength < 1) settings.quizLength = DEFAULT_SETTINGS.quizLength;
   if (!Number.isFinite(settings.timeLimitSec) || settings.timeLimitSec < 1) settings.timeLimitSec = DEFAULT_SETTINGS.timeLimitSec;
   if (!Number.isFinite(settings.dailyAttemptLimit) || settings.dailyAttemptLimit < 1) settings.dailyAttemptLimit = DEFAULT_SETTINGS.dailyAttemptLimit;
