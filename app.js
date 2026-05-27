@@ -1,9 +1,9 @@
 const DEFAULT_SETTINGS = {
   quizLength: 10,
   timeLimitSec: 8,
-  dailyAttemptLimitEnabled: false,
+  dailyAttemptLimitEnabled: true,
   dailyAttemptLimit: 5,
-  seasonAttemptLimitEnabled: true,
+  seasonAttemptLimitEnabled: false,
   seasonAttemptLimit: 5
 };
 const STORAGE = {
@@ -636,7 +636,7 @@ async function reserveRatingAttempt() {
       nickname: currentPlayer.nickname || ""
     });
     if (data.ok && data.allowed === false) {
-      $("wordStatus").textContent = data.message || `ガチモードは今シーズン${settings.seasonAttemptLimit}回までです。`;
+      $("wordStatus").textContent = data.message || `ガチモードは1日${settings.dailyAttemptLimit}回までです。`;
       return false;
     }
     if (data.ok && data.attemptId) {
@@ -902,10 +902,10 @@ async function refreshAttemptStatus() {
   try {
     const data = await jsonp("attemptStatus", { playerId: currentPlayer.playerId });
     if (!data.ok || !data.enabled) return;
-    const used = Number(data.countSeason || data.countToday || 0);
-    const limit = Number(data.limit || settings.seasonAttemptLimit || 5);
+    const used = Number(data.countToday ?? data.countSeason ?? 0);
+    const limit = Number(data.limit || settings.dailyAttemptLimit || 5);
     const left = Math.max(0, limit - used);
-    $("syncStatus").textContent = `ガチモード残り ${left} / ${limit} 回`;
+    $("syncStatus").textContent = `今日のガチモード残り ${left} / ${limit} 回`;
   } catch {
     // keep the normal status message when attempt status cannot be loaded
   }
