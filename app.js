@@ -632,18 +632,13 @@ async function reserveRatingAttempt() {
   if (!settings.dailyAttemptLimitEnabled && !settings.seasonAttemptLimitEnabled) return true;
   $("wordStatus").textContent = "受験回数を確認しています。";
   try {
-    const data = await jsonp("startAttempt", {
-      playerId: currentPlayer.playerId,
-      className: currentPlayer.className || "",
-      studentNo: currentPlayer.studentNo || "",
-      nickname: currentPlayer.nickname || ""
-    });
+    const data = await jsonp("attemptStatus", { playerId: currentPlayer.playerId });
     if (data.ok && data.allowed === false) {
       $("wordStatus").textContent = data.message || `ガチモードは1日${settings.dailyAttemptLimit}回までです。`;
       return false;
     }
-    if (data.ok && data.attemptId) {
-      activeAttemptId = data.attemptId;
+    if (data.ok && data.allowed !== false) {
+      activeAttemptId = "";
       return true;
     }
     $("wordStatus").textContent = data.message || "受験回数を確認できませんでした。もう一度押してください。";
