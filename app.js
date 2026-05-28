@@ -60,6 +60,8 @@ let powerBeforeBattle = 1000;
 let activeAttemptId = "";
 let retryWrongMode = false;
 let quizRunId = 0;
+let startingQuiz = false;
+let ratingAttemptAllowed = true;
 
 const $ = (id) => document.getElementById(id);
 
@@ -221,6 +223,7 @@ function validatePlayerForm(form) {
 
 function saveCurrentPlayer(player) {
   currentPlayer = player;
+  ratingAttemptAllowed = true;
   localStorage.setItem(STORAGE.currentPlayer, JSON.stringify(player));
   updatePlayerStatus();
   updateScorePanel();
@@ -616,7 +619,9 @@ async function loadCloudSettings() {
 }
 
 function updateStartState() {
-  $("startButton").disabled = !(currentPlayer && (activeWords.length >= 4 || words.length >= 4));
+  const hasEnoughWords = activeWords.length >= 4 || words.length >= 4;
+  const blockedByLimit = !isCasualMode() && !ratingAttemptAllowed;
+  $("startButton").disabled = !(currentPlayer && hasEnoughWords) || blockedByLimit || startingQuiz;
 }
 
 function updateScorePanel() {
@@ -639,49 +644,97 @@ function shuffle(array) {
 
 function buildQuiz() {
   const count = Math.min(settings.quizLength, activeWords.length);
+  const choicePool = [...activeWords, ...words];
   return shuffle(activeWords).slice(0, count).map((question) => {
-    const distractors = shuffle(activeWords.filter((item) => item.meaning !== question.meaning))
-      .slice(0, 3)
-      .map((item) => item.meaning);
+    const distractors = shuffle(choicePool.filter((item) => item.meaning !== question.meaning))
+      .map((item) => item.meaning)
+      .filter((meaning, index, array) => meaning && array.indexOf(meaning) === index)
+      .slice(0, 3);
     return { ...question, choices: shuffle([question.meaning, ...distractors]) };
   });
 }
 
 async function reserveRatingAttempt() {
+  if (isCasualMode()) {
+    activeAttemptId = "";
+    return true;
+  }
+  if (!getGasUrl()) {
+    ratingAttemptAllowed = false;
+    $("syncStatus").textContent = "ガチモードは共有保存への接続が必要です。";
+    updateStartState();
+    return false;
+  }
+
+  $("syncStatus").textContent = "今日の受験回数を確認しています。";
   activeAttemptId = "";
-  return true;
+  try {
+    const data = await jsonp("startAttempt", {
+      playerId: currentPlayer.playerId,
+      className: currentPlayer.className || "",
+      studentNo: currentPlayer.studentNo || "",
+      nickname: currentPlayer.nickname || ""
+    });
+    if (!data.ok || !data.allowed) {
+      ratingAttemptAllowed = false;
+      $("syncStatus").textContent = data.message || `ガチモードは1日${settings.dailyAttemptLimit || 5}回までです。`;
+      updateStartState();
+      return false;
+    }
+    activeAttemptId = data.attemptId || "";
+    const used = Number(data.countToday || 0);
+    const limit = Number(data.limit || settings.dailyAttemptLimit || 5);
+    ratingAttemptAllowed = used < limit;
+    $("syncStatus").textContent = `今日のガチモード ${used} / ${limit} 回`;
+    updateStartState();
+    return true;
+  } catch {
+    ratingAttemptAllowed = false;
+    $("syncStatus").textContent = "受験回数を確認できませんでした。通信を確認してもう一度押してください。";
+    updateStartState();
+    return false;
+  }
 }
 
 async function startQuiz() {
+  if (startingQuiz) return;
+  startingQuiz = true;
+  updateStartState();
   retryWrongMode = false;
   quizRunId += 1;
-  if (!currentPlayer) {
-    updatePlayerStatus("クラス、出席番号、ニックネーム、暗証番号を入力してください。");
-    return;
-  }
-  if (activeWords.length < 4) {
-    if (words.length >= 4) {
-      activeWords = [...words];
-      $("wordStatus").textContent = "選んだ範囲の単語が不足していたため、読み込み済み単語から開始します。";
-    } else {
-      $("wordStatus").textContent = "単語が4語以上必要です。共有単語を読み込んでください。";
+
+  try {
+    if (!currentPlayer) {
+      updatePlayerStatus("クラス、出席番号、ニックネーム、暗証番号を入力してください。");
       return;
     }
+    if (activeWords.length < 4) {
+      if (words.length >= 4) {
+        activeWords = [...words];
+        $("wordStatus").textContent = "選んだ範囲の単語が不足していたため、読み込み済み単語から開始します。";
+      } else {
+        $("wordStatus").textContent = "単語が4語以上必要です。共有単語を読み込んでください。";
+        return;
+      }
+    }
+    activeAttemptId = "";
+    if (!(await reserveRatingAttempt())) return;
+    currentQuiz = buildQuiz();
+    currentIndex = 0;
+    correctCount = 0;
+    earnedWeight = 0;
+    answerLogs = [];
+    totalWeight = currentQuiz.reduce((sum, item) => sum + item.difficulty, 0);
+    powerBeforeBattle = Number(currentPlayer.power || 1000);
+    $("startBox").classList.add("hidden");
+    $("resultBox").classList.add("hidden");
+    $("questionBox").classList.remove("hidden");
+    updateScorePanel();
+    showQuestion();
+  } finally {
+    startingQuiz = false;
+    updateStartState();
   }
-  activeAttemptId = "";
-  if (!(await reserveRatingAttempt())) return;
-  currentQuiz = buildQuiz();
-  currentIndex = 0;
-  correctCount = 0;
-  earnedWeight = 0;
-  answerLogs = [];
-  totalWeight = currentQuiz.reduce((sum, item) => sum + item.difficulty, 0);
-  powerBeforeBattle = Number(currentPlayer.power || 1000);
-  $("startBox").classList.add("hidden");
-  $("resultBox").classList.add("hidden");
-  $("questionBox").classList.remove("hidden");
-  updateScorePanel();
-  showQuestion();
 }
 
 function showQuestion() {
@@ -846,6 +899,7 @@ async function finishQuiz() {
       await postToCloud({ action: "result", record });
       $("syncStatus").textContent = "結果を保存しました。";
       activeAttemptId = "";
+      refreshAttemptStatus();
       loadRanking();
     } catch {
       $("syncStatus").textContent = "結果の保存に失敗しました。先生に伝えてください。";
@@ -935,10 +989,12 @@ async function refreshAttemptStatus() {
   try {
     const data = await jsonp("attemptStatus", { playerId: currentPlayer.playerId });
     if (!data.ok || !data.enabled) return;
+    ratingAttemptAllowed = Boolean(data.allowed);
     const used = Number(data.countToday ?? data.countSeason ?? 0);
     const limit = Number(data.limit || settings.dailyAttemptLimit || 5);
     const left = Math.max(0, limit - used);
     $("syncStatus").textContent = `今日のガチモード残り ${left} / ${limit} 回`;
+    updateStartState();
   } catch {
     // keep the normal status message when attempt status cannot be loaded
   }
