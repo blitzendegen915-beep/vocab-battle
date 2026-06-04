@@ -445,6 +445,18 @@ tr[data-player-id]:hover {
   line-height: 1.15;
 }
 
+.ranking-card.ranking-entry {
+  grid-column: auto;
+  grid-template-columns: 56px 1fr auto;
+  min-height: 56px;
+  padding: 12px 14px;
+}
+
+.ranking-card.ranking-entry strong {
+  font-size: 18px;
+  line-height: 1.25;
+}
+
 .ranking-rank {
   color: var(--primary-dark);
   font-weight: 900;

@@ -1048,32 +1048,20 @@ function renderRanking(data) {
   $("seasonLabel").textContent = season.seasonName || CURRENT_SEASON_NAME;
   $("adminSeasonName").textContent = season.seasonName || CURRENT_SEASON_NAME;
 
+  if (top10.length) {
+    $("rankingList").innerHTML = top10.map((item) => `
+      <article class="ranking-card ranking-entry">
+        <span class="ranking-rank">${Number(item.rank || 0)}位</span>
+        <strong class="ranking-name">${escapeHtml(item.nickname || "no name")}</strong>
+        <span class="ranking-power">${Number(item.power || 0)}</span>
+      </article>
+    `).join("");
+  } else {
+    $("rankingList").innerHTML = '<article class="ranking-card wide">Drizzle Seasonのランキングはまだありません。</article>';
+  }
+
   if (me && me.rank) {
-    const topPowers = top10.map((item) => Number(item.power || 0)).filter((power) => power > 0);
-    const upperAverage = topPowers.length
-      ? Math.round(topPowers.reduce((sum, power) => sum + power, 0) / topPowers.length)
-      : Number(me.power || 0);
-    const gapToUpper = Math.max(0, upperAverage - Number(me.power || 0));
-    const playersAbove = Math.max(0, Number(me.rank || 1) - 1);
-    $("rankingList").innerHTML = `
-      <article class="ranking-card">
-        <span>あなたの順位</span>
-        <strong>${me.rank}位</strong>
-      </article>
-      <article class="ranking-card">
-        <span>今期戦闘力</span>
-        <strong>${me.power}</strong>
-      </article>
-      <article class="ranking-card">
-        <span>上位平均との差</span>
-        <strong>${gapToUpper === 0 ? "上位平均以上" : `${gapToUpper}差`}</strong>
-      </article>
-      <article class="ranking-card">
-        <span>自分より上</span>
-        <strong>${playersAbove}人</strong>
-      </article>
-    `;
-    $("myRankStatus").textContent = `今期最高 ${me.seasonBestPower} / 歴代最高 ${me.allTimeBestPower}。他のプレイヤー名は表示されません。`;
+    $("myRankStatus").textContent = `あなたは${me.rank}位 / 今期戦闘力 ${me.power} / 今期最高 ${me.seasonBestPower} / 歴代最高 ${me.allTimeBestPower}`;
     if (currentPlayer && me.playerId === currentPlayer.playerId) {
       saveCurrentPlayer({
         ...currentPlayer,
@@ -1086,13 +1074,9 @@ function renderRanking(data) {
       });
     }
   } else {
-    $("rankingList").innerHTML = `<article class="ranking-card wide">${currentPlayer
-      ? "あなたの順位はまだありません。1回受験すると表示されます。"
-      : "プレイヤー登録後に自分の順位が表示されます。"
-    }</article>`;
     $("myRankStatus").textContent = currentPlayer
       ? "あなたの順位はまだありません。1回受験すると表示されます。"
-      : "他のプレイヤー名は表示されません。";
+      : "プレイヤー登録後に自分の順位も表示されます。";
   }
 }
 
