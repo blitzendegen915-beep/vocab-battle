@@ -62,6 +62,8 @@ let retryWrongMode = false;
 let quizRunId = 0;
 let startingQuiz = false;
 let ratingAttemptAllowed = true;
+let attemptUsedToday = null;
+let attemptLimitToday = DEFAULT_SETTINGS.dailyAttemptLimit;
 
 const $ = (id) => document.getElementById(id);
 
@@ -366,9 +368,10 @@ function setWords(nextWords, source = "local") {
   localStorage.setItem(STORAGE.cachedWords, JSON.stringify(words));
   renderUnitOptions();
   updateActiveWords();
-  $("wordStatus").textContent = activeWords.length >= 4
+  const required = getRequiredWordCount();
+  $("wordStatus").textContent = activeWords.length >= required
     ? `${words.length}語を読み込みました。教材: ${getSelectedRangeLabel()}（${activeWords.length}語）${source === "cloud" ? "（共有）" : ""}`
-    : `${words.length}語を読み込みました。選んだ範囲には単語が4語以上必要です。`;
+    : `${words.length}語を読み込みました。選んだ範囲には単語が${required}語以上必要です。`;
   $("adminWordStatus").textContent = `${words.length}語の端末内単語データがあります。`;
   $("adminWordsCount").textContent = words.length;
   updateStartState();
@@ -394,6 +397,28 @@ function isCasualMode() {
   return getBattleMode() === "casual";
 }
 
+function isWritingMode() {
+  return getBattleMode() === "writing";
+}
+
+function isPracticeMode() {
+  return isCasualMode() || isWritingMode();
+}
+
+function getBattleModeLabel(mode = getBattleMode()) {
+  if (mode === "writing") return "書き取りモード";
+  if (mode === "casual") return "お気軽モード";
+  return "ガチモード";
+}
+
+function getRequiredWordCount() {
+  return isWritingMode() ? 1 : 4;
+}
+
+function normalizeWrittenAnswer(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
 function getSelectedUnitLabel() {
   return getSelectedUnit();
 }
@@ -407,11 +432,11 @@ function getNumberRange() {
 }
 
 function isNumberRangeSpecified() {
-  return isCasualMode();
+  return isPracticeMode();
 }
 
 function getSelectedRangeLabel() {
-  if (!isCasualMode()) return `${getSelectedUnitLabel()} / 全範囲`;
+  if (!isPracticeMode()) return `${getSelectedUnitLabel()} / 全範囲`;
   const { start, end } = getNumberRange();
   const unitLabel = getSelectedUnitLabel();
   const numberLabel = end ? `${start}〜${end}` : `${start}〜最後`;
@@ -485,15 +510,16 @@ function renderUnitOptions() {
 function updateActiveWords() {
   const { start, end } = getNumberRange();
   const unitWords = getSelectedUnitWords();
+  const required = getRequiredWordCount();
   updateRangeGuide(unitWords);
-  activeWords = isCasualMode()
+  activeWords = isPracticeMode()
     ? unitWords.filter((word) => {
       const number = Number(word.unitNumber || 0);
       return number >= start && (!end || number <= end);
     })
     : unitWords;
   $("unitStatus").textContent = words.length
-    ? `${isCasualMode() ? "お気軽モード" : "ガチモード"}: ${getSelectedRangeLabel()}（${activeWords.length}語）`
+    ? `${getBattleModeLabel()}: ${getSelectedRangeLabel()}（${activeWords.length}語）`
     : "単語データを読み込むと選べます。";
   updateStartState();
 }
@@ -503,11 +529,11 @@ function updateModeUI() {
   document.querySelectorAll('input[name="battleMode"]').forEach((input) => {
     input.checked = input.value === mode;
   });
-  const casual = isCasualMode();
-  $("rangeInputs").classList.toggle("disabled", !casual);
-  $("rangeGuide").classList.toggle("hidden", !casual);
-  $("rangeStart").disabled = !casual;
-  $("rangeEnd").disabled = !casual;
+  const practice = isPracticeMode();
+  $("rangeInputs").classList.toggle("disabled", !practice);
+  $("rangeGuide").classList.toggle("hidden", !practice);
+  $("rangeStart").disabled = !practice;
+  $("rangeEnd").disabled = !practice;
   updateActiveWords();
 }
 
@@ -619,9 +645,48 @@ async function loadCloudSettings() {
 }
 
 function updateStartState() {
-  const hasEnoughWords = activeWords.length >= 4 || words.length >= 4;
-  const blockedByLimit = !isCasualMode() && !ratingAttemptAllowed;
+  const required = getRequiredWordCount();
+  const hasEnoughWords = activeWords.length >= required || words.length >= required;
+  const blockedByLimit = !isPracticeMode() && !ratingAttemptAllowed;
   $("startButton").disabled = !(currentPlayer && hasEnoughWords) || blockedByLimit || startingQuiz;
+  updateAttemptPanel();
+  updateRewardPracticeButton();
+}
+
+function updateAttemptPanel() {
+  const display = $("attemptDisplay");
+  const help = $("attemptHelp");
+  if (!display || !help) return;
+  const limit = Number(attemptLimitToday || settings.dailyAttemptLimit || 5);
+
+  if (isPracticeMode()) {
+    display.textContent = "練習無制限";
+    help.textContent = isWritingMode()
+      ? "書き取りモードは戦闘力とランキングに反映されません。"
+      : "お気軽モードは戦闘力とランキングに反映されません。";
+    return;
+  }
+
+  if (attemptUsedToday === null) {
+    display.textContent = `${limit}回まで`;
+    help.textContent = "共有保存に接続すると残り回数を確認できます。";
+    return;
+  }
+
+  const left = Math.max(0, limit - attemptUsedToday);
+  display.textContent = `残り ${left} / ${limit}`;
+  help.textContent = left > 0
+    ? "ガチモードの挑戦は開始時に消費されます。"
+    : "今日はガチモード上限です。お気軽モードで練習できます。";
+}
+
+function updateRewardPracticeButton() {
+  const button = $("rewardPracticeButton");
+  if (!button) return;
+  const ratingLimitReached = !isCasualMode() && attemptUsedToday !== null && attemptUsedToday >= Number(attemptLimitToday || settings.dailyAttemptLimit || 5);
+  button.hidden = isCasualMode();
+  button.disabled = !ratingLimitReached;
+  button.textContent = ratingLimitReached ? "広告で追加練習" : "追加練習は上限後に表示";
 }
 
 function updateScorePanel() {
@@ -655,7 +720,7 @@ function buildQuiz() {
 }
 
 async function reserveRatingAttempt() {
-  if (isCasualMode()) {
+  if (isPracticeMode()) {
     activeAttemptId = "";
     return true;
   }
@@ -677,6 +742,8 @@ async function reserveRatingAttempt() {
     });
     if (!data.ok || !data.allowed) {
       ratingAttemptAllowed = false;
+      attemptUsedToday = Number(data.countToday ?? data.countSeason ?? settings.dailyAttemptLimit ?? 5);
+      attemptLimitToday = Number(data.limit || settings.dailyAttemptLimit || 5);
       $("syncStatus").textContent = data.message || `ガチモードは1日${settings.dailyAttemptLimit || 5}回までです。`;
       updateStartState();
       return false;
@@ -684,6 +751,8 @@ async function reserveRatingAttempt() {
     activeAttemptId = data.attemptId || "";
     const used = Number(data.countToday || 0);
     const limit = Number(data.limit || settings.dailyAttemptLimit || 5);
+    attemptUsedToday = used;
+    attemptLimitToday = limit;
     ratingAttemptAllowed = used < limit;
     $("syncStatus").textContent = `今日のガチモード ${used} / ${limit} 回`;
     updateStartState();
@@ -708,12 +777,13 @@ async function startQuiz() {
       updatePlayerStatus("クラス、出席番号、ニックネーム、暗証番号を入力してください。");
       return;
     }
-    if (activeWords.length < 4) {
-      if (words.length >= 4) {
+    const required = getRequiredWordCount();
+    if (activeWords.length < required) {
+      if (words.length >= required) {
         activeWords = [...words];
         $("wordStatus").textContent = "選んだ範囲の単語が不足していたため、読み込み済み単語から開始します。";
       } else {
-        $("wordStatus").textContent = "単語が4語以上必要です。共有単語を読み込んでください。";
+        $("wordStatus").textContent = `単語が${required}語以上必要です。共有単語を読み込んでください。`;
         return;
       }
     }
@@ -740,12 +810,33 @@ async function startQuiz() {
 function showQuestion() {
   locked = false;
   const question = currentQuiz[currentIndex];
+  const writing = isWritingMode();
   questionStartedAt = Date.now();
   $("questionNumber").textContent = `第${currentIndex + 1}問`;
   $("difficultyLabel").textContent = `難易度 ${question.difficulty}`;
-  $("wordPrompt").textContent = question.word;
+  $("wordPrompt").textContent = writing ? question.meaning : question.word;
   $("feedback").textContent = "";
   $("choices").innerHTML = "";
+  if (writing) {
+    const form = document.createElement("form");
+    form.className = "writing-form";
+    form.innerHTML = `
+      <label for="writingAnswer">英単語を入力</label>
+      <div class="writing-row">
+        <input id="writingAnswer" class="writing-input" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" />
+        <button id="writingSubmit" type="submit">回答</button>
+      </div>
+      <p>大文字小文字は気にしなくてOK。前後の空白も無視されます。</p>
+    `;
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      answer($("writingAnswer").value, false, $("writingAnswer"));
+    });
+    $("choices").appendChild(form);
+    window.setTimeout(() => $("writingAnswer")?.focus(), 0);
+    startTimer();
+    return;
+  }
   question.choices.forEach((choice) => {
     const button = document.createElement("button");
     button.type = "button";
@@ -784,29 +875,41 @@ function answer(choice, timedOut, selectedButton) {
   window.clearInterval(timerId);
 
   const question = currentQuiz[currentIndex];
+  const writing = isWritingMode();
   const responseTimeMs = Math.min(Date.now() - questionStartedAt, settings.timeLimitSec * 1000);
-  const isCorrect = !timedOut && choice === question.meaning;
+  const isCorrect = !timedOut && (writing
+    ? normalizeWrittenAnswer(choice) === normalizeWrittenAnswer(question.word)
+    : choice === question.meaning);
 
-  document.querySelectorAll(".choice").forEach((button) => {
-    button.disabled = true;
-    if (button.textContent === question.meaning) button.classList.add("correct");
-  });
+  if (writing) {
+    document.querySelectorAll(".writing-input, .writing-form button").forEach((item) => {
+      item.disabled = true;
+    });
+    if (selectedButton) selectedButton.classList.add(isCorrect ? "correct" : "wrong");
+  } else {
+    document.querySelectorAll(".choice").forEach((button) => {
+      button.disabled = true;
+      if (button.textContent === question.meaning) button.classList.add("correct");
+    });
+  }
 
   if (isCorrect) {
     correctCount += 1;
     earnedWeight += question.difficulty;
     $("feedback").textContent = "正解！";
   } else if (timedOut) {
-    $("feedback").textContent = `時間切れ。正解は「${question.meaning}」`;
+    $("feedback").textContent = `時間切れ。正解は「${writing ? question.word : question.meaning}」`;
   } else {
-    if (selectedButton) selectedButton.classList.add("wrong");
-    $("feedback").textContent = `不正解。正解は「${question.meaning}」`;
+    if (!writing && selectedButton) selectedButton.classList.add("wrong");
+    $("feedback").textContent = `不正解。正解は「${writing ? question.word : question.meaning}」`;
   }
 
   answerLogs.push({
     word: question.word,
-    correctMeaning: question.meaning,
+    correctMeaning: writing ? question.word : question.meaning,
     selectedMeaning: timedOut ? "" : choice,
+    promptMeaning: question.meaning,
+    questionType: writing ? "writing" : "choice",
     isCorrect,
     responseTimeMs,
     timedOut
@@ -859,7 +962,7 @@ async function finishQuiz() {
   $("deltaDisplay").textContent = scoreMode ? `${score}点` : (delta >= 0 ? `+${delta}` : String(delta));
   $("avgTimeDisplay").textContent = `${(avgTime / 1000).toFixed(1)}秒`;
   $("resultSummary").textContent = scoreMode
-    ? `お気軽モードです。1問10点で ${score}点 / ${currentQuiz.length * 10}点。戦闘力とランキングには反映されません。`
+    ? `${getBattleModeLabel()}です。1問10点で ${score}点 / ${currentQuiz.length * 10}点。戦闘力とランキングには反映されません。`
     : `正答率 ${Math.round((correctCount / currentQuiz.length) * 100)}%。戦闘力は ${powerBeforeBattle} から ${powerAfter} になりました。`;
   renderAnswerReview();
   if (wasRetryWrongMode) {
@@ -882,7 +985,7 @@ async function finishQuiz() {
     delta: scoreMode ? 0 : delta,
     avgTime,
     answerLogs,
-    mode: scoreMode ? "score" : "rating",
+    mode: scoreMode ? getBattleMode() : "rating",
     score,
     attemptId: activeAttemptId
   };
@@ -920,6 +1023,7 @@ function renderAnswerReview() {
           <em>${resultLabel}</em>
         </div>
         <dl>
+          ${log.promptMeaning ? `<div><dt>出題</dt><dd>${escapeHtml(log.promptMeaning)}</dd></div>` : ""}
           <div><dt>正しい答え</dt><dd>${escapeHtml(log.correctMeaning)}</dd></div>
           <div><dt>あなたの回答</dt><dd>${escapeHtml(selected)}</dd></div>
           <div><dt>回答時間</dt><dd>${(Number(log.responseTimeMs || 0) / 1000).toFixed(1)}秒</dd></div>
@@ -933,7 +1037,8 @@ async function copyAnswerReview() {
   const lines = answerLogs.map((log, index) => {
     const selected = log.timedOut ? "時間切れ" : (log.selectedMeaning || "未回答");
     const mark = log.isCorrect ? "○" : "×";
-    return `${index + 1}. ${mark} ${log.word} / 正解: ${log.correctMeaning} / 回答: ${selected}`;
+    const prompt = log.promptMeaning ? ` / 出題: ${log.promptMeaning}` : "";
+    return `${index + 1}. ${mark} ${log.word}${prompt} / 正解: ${log.correctMeaning} / 回答: ${selected}`;
   });
   if (!lines.length) {
     alert("コピーする答え合わせがありません。");
@@ -944,6 +1049,7 @@ async function copyAnswerReview() {
 }
 
 async function retryWrongWords() {
+  const retryMode = isWritingMode() ? "writing" : "casual";
   const wrongWords = answerLogs
     .filter((log) => !log.isCorrect)
     .map((log) => currentQuiz.find((word) => word.word === log.word))
@@ -962,14 +1068,11 @@ async function retryWrongWords() {
   });
   retryWrongMode = true;
   quizRunId += 1;
-  localStorage.setItem(STORAGE.battleMode, "casual");
+  localStorage.setItem(STORAGE.battleMode, retryMode);
   document.querySelectorAll('input[name="battleMode"]').forEach((input) => {
-    input.checked = input.value === "casual";
+    input.checked = input.value === retryMode;
   });
-  $("rangeInputs").classList.add("disabled");
-  $("rangeGuide").classList.add("hidden");
-  $("rangeStart").disabled = true;
-  $("rangeEnd").disabled = true;
+  updateModeUI();
   activeWords = wrongWords;
   $("resultBox").classList.add("hidden");
   $("startBox").classList.add("hidden");
@@ -980,7 +1083,7 @@ async function retryWrongWords() {
   answerLogs = [];
   totalWeight = currentQuiz.reduce((sum, item) => sum + item.difficulty, 0);
   powerBeforeBattle = Number(currentPlayer?.power || 1000);
-  $("wordStatus").textContent = `間違えた単語${wrongWords.length}語だけ再挑戦中です。お気軽モードなので戦闘力には反映しません。`;
+  $("wordStatus").textContent = `間違えた単語${wrongWords.length}語だけ再挑戦中です。${getBattleModeLabel(retryMode)}なので戦闘力には反映しません。`;
   updateScorePanel();
   showQuestion();
 }
@@ -992,6 +1095,8 @@ async function refreshAttemptStatus() {
     ratingAttemptAllowed = Boolean(data.allowed);
     const used = Number(data.countToday ?? data.countSeason ?? 0);
     const limit = Number(data.limit || settings.dailyAttemptLimit || 5);
+    attemptUsedToday = used;
+    attemptLimitToday = limit;
     const left = Math.max(0, limit - used);
     $("syncStatus").textContent = `今日のガチモード残り ${left} / ${limit} 回`;
     updateStartState();
@@ -1240,32 +1345,44 @@ document.querySelectorAll('input[name="battleMode"]').forEach((input) => {
     resetQuizSurfaceForSelectionChange();
     localStorage.setItem(STORAGE.battleMode, input.value);
     updateModeUI();
-    $("wordStatus").textContent = activeWords.length >= 4
-      ? `${input.value === "casual" ? "お気軽モード" : "ガチモード"}: ${getSelectedRangeLabel()}（${activeWords.length}語）`
-      : "選んだ教材には単語が4語以上必要です。";
+    const required = getRequiredWordCount();
+    $("wordStatus").textContent = activeWords.length >= required
+      ? `${getBattleModeLabel(input.value)}: ${getSelectedRangeLabel()}（${activeWords.length}語）`
+      : `選んだ教材には単語が${required}語以上必要です。`;
   });
 });
 $("unitSelect").addEventListener("change", () => {
   resetQuizSurfaceForSelectionChange();
   localStorage.setItem(STORAGE.selectedUnit, $("unitSelect").value);
   updateActiveWords();
-  $("wordStatus").textContent = activeWords.length >= 4
-    ? `${isCasualMode() ? "お気軽モード" : "ガチモード"}: ${getSelectedRangeLabel()}（${activeWords.length}語）`
-    : "選んだ範囲には単語が4語以上必要です。";
+  const required = getRequiredWordCount();
+  $("wordStatus").textContent = activeWords.length >= required
+    ? `${getBattleModeLabel()}: ${getSelectedRangeLabel()}（${activeWords.length}語）`
+    : `選んだ範囲には単語が${required}語以上必要です。`;
 });
 ["rangeStart", "rangeEnd"].forEach((id) => {
   $(id).addEventListener("input", () => {
     resetQuizSurfaceForSelectionChange();
     saveNumberRange();
     updateActiveWords();
-    $("wordStatus").textContent = activeWords.length >= 4
-      ? `${isCasualMode() ? "お気軽モード" : "ガチモード"}: ${getSelectedRangeLabel()}（${activeWords.length}語）`
-      : "選んだ範囲には単語が4語以上必要です。";
+    const required = getRequiredWordCount();
+    $("wordStatus").textContent = activeWords.length >= required
+      ? `${getBattleModeLabel()}: ${getSelectedRangeLabel()}（${activeWords.length}語）`
+      : `選んだ範囲には単語が${required}語以上必要です。`;
   });
 });
 $("startButton").addEventListener("click", startQuiz);
 $("retryWrongButton").addEventListener("click", retryWrongWords);
 $("copyAnswersButton").addEventListener("click", copyAnswerReview);
+$("rewardPracticeButton").addEventListener("click", () => {
+  localStorage.setItem(STORAGE.battleMode, "casual");
+  retryWrongMode = false;
+  updateModeUI();
+  $("resultBox").classList.add("hidden");
+  $("startBox").classList.remove("hidden");
+  $("wordStatus").textContent = "追加練習を開きました。アプリ版ではこの操作をリワード広告に差し替えられます。";
+  updateStartState();
+});
 $("restartButton").addEventListener("click", () => {
   retryWrongMode = false;
   updateModeUI();

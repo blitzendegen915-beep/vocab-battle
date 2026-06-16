@@ -247,7 +247,7 @@ textarea:focus {
 .mode-select {
   display: grid;
   gap: 8px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .mode-select label {
@@ -487,6 +487,20 @@ tr[data-player-id]:hover {
   padding: 16px;
 }
 
+.score-panel .attempt-card {
+  background: #eef7f1;
+  border: 1px solid #cfded8;
+}
+
+.attempt-card small {
+  color: var(--muted);
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.45;
+  margin-top: 6px;
+}
+
 .label {
   color: var(--muted);
   display: block;
@@ -584,6 +598,41 @@ tr[data-player-id]:hover {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.writing-form {
+  display: grid;
+  gap: 10px;
+  grid-column: 1 / -1;
+}
+
+.writing-form label {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.writing-row {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 1fr auto;
+}
+
+.writing-input {
+  min-height: 58px;
+}
+
+.writing-input.correct {
+  background: #dff3e8;
+  border-color: #55ad77;
+}
+
+.writing-input.wrong {
+  background: #ffe6df;
+  border-color: #d36a55;
+}
+
+.writing-form p {
+  font-size: 14px;
+}
+
 .choice {
   background: #fff;
   border: 1px solid var(--line);
@@ -637,6 +686,36 @@ tr[data-player-id]:hover {
 .result-numbers strong {
   display: block;
   font-size: 36px;
+}
+
+.sponsor-slot {
+  border: 1px dashed #bcc7c4;
+  border-radius: 8px;
+  display: grid;
+  gap: 6px;
+  min-height: 96px;
+  padding: 16px;
+  place-content: center;
+  text-align: center;
+  width: min(100%, 720px);
+}
+
+.sponsor-slot span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.sponsor-slot strong {
+  color: var(--ink);
+  font-size: 18px;
+}
+
+.sponsor-slot p {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 0;
 }
 
 .answer-review {
@@ -711,7 +790,7 @@ tr[data-player-id]:hover {
 .answer-review dl {
   display: grid;
   gap: 8px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   margin: 0;
 }
 
@@ -808,6 +887,7 @@ th {
   .choices,
   .result-numbers,
   .admin-stats,
+  .mode-select,
   .ranking-list,
   .ranking-summary,
   .answer-review dl {

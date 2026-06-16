@@ -78,6 +78,11 @@
                 <span>お気軽モード</span>
                 <small>範囲指定・スコア</small>
               </label>
+              <label>
+                <input type="radio" name="battleMode" value="writing" />
+                <span>書き取りモード</span>
+                <small>英単語を入力</small>
+              </label>
             </div>
             <label>
               教材
@@ -134,6 +139,11 @@
               <span class="label">制限時間</span>
               <strong id="timeLimitDisplay">8秒</strong>
             </div>
+            <div class="attempt-card">
+              <span class="label">今日の挑戦</span>
+              <strong id="attemptDisplay">確認中</strong>
+              <small id="attemptHelp">ガチモードの残り回数を表示します。</small>
+            </div>
             <p id="syncStatus" class="mini-status">共有保存は未設定です。</p>
           </aside>
 
@@ -166,6 +176,11 @@
                 <div><span>変動 / スコア</span><strong id="deltaDisplay">+0</strong></div>
                 <div><span>平均回答時間</span><strong id="avgTimeDisplay">0.0秒</strong></div>
               </div>
+              <section id="sponsorSlot" class="sponsor-slot" aria-label="スポンサー枠">
+                <span>スポンサー枠</span>
+                <strong>ここに広告を表示できます</strong>
+                <p>正式な広告審査後に、結果画面広告やアプリ版リワード広告へ差し替えます。</p>
+              </section>
               <section class="answer-review">
                 <h3>答え合わせ</h3>
                 <div id="answerReviewList" class="answer-review-list"></div>
@@ -173,6 +188,7 @@
               <div class="result-actions">
                 <button id="retryWrongButton" type="button" class="secondary">間違えた単語だけ再挑戦</button>
                 <button id="copyAnswersButton" type="button" class="secondary">答え一覧をコピー</button>
+                <button id="rewardPracticeButton" type="button" class="secondary">広告で追加練習</button>
                 <button id="restartButton" type="button">もう一度</button>
               </div>
             </div>
