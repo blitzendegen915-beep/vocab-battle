@@ -905,3 +905,20 @@ th {
     grid-template-columns: 1fr 1fr;
   }
 }
+
+.site-footer-link {
+  margin: 32px auto 24px;
+  max-width: 960px;
+  padding: 16px 20px;
+  background: var(--soft);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.site-footer-link a {
+  color: var(--primary-dark);
+  font-weight: 700;
+}
