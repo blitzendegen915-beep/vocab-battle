@@ -55,6 +55,7 @@ ffmpeg -y -loop 1 -i "$f" -t 3 -vf "scale=3840:2160:force_original_aspect_ratio=
 
 - 事前2倍スケール(3840x2160)にしてからzoompanするとジッターが出ない。
 - 全クリップ同一解像度・fps必須(xfade/concatの前提)。
+- **SARの罠**: zoompan産クリップはSARが`20481:20480`等の微妙な値になり、concat/xfadeで「Input link parameters do not match」で失敗する。結合filter_complexでは全入力に `setsar=1` を挟むこと。
 
 ## 5. タイトル・モーショングラフィック
 
