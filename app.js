@@ -24,9 +24,9 @@ const STORAGE = {
 const ADMIN_SESSION_KEY = "vocabBattleAdminUnlocked";
 const ADMIN_PIN_SESSION_KEY = "vocabBattleAdminPin";
 const ADMIN_PASSWORD_HASH = "75ae5d65da5fbbbcaf62828269c71b049d88755196f6fab97dd3a04a6720fd92";
-const CURRENT_SEASON_ID = "drizzle_season";
-const CURRENT_SEASON_NAME = "Drizzle Season";
-const CLIENT_DATA_VERSION = "drizzle_season_attempts_v2";
+const CURRENT_SEASON_ID = "ember_season";
+const CURRENT_SEASON_NAME = "Ember Season";
+const CLIENT_DATA_VERSION = "ember_season_attempts_v1";
 const DEFAULT_GAS_URL = "https://script.google.com/macros/s/AKfycbxEQvr8axjvFfIwQSOOd_rIYy-cyt92BZ62eAxjuY1XdojQsYYDV1Ne7svW3_UkS4Rt/exec";
 const OLD_GAS_URLS = [
   "https://script.google.com/macros/s/AKfycbytVz4FsKrCy1160KkpnvksFiluhOW8EtQQtppF1SW1S3X_9-Ki05AjSaoylhro06ti/exec",
@@ -1145,7 +1145,7 @@ function renderRanking(data) {
   if (season.seasonId && season.seasonId !== CURRENT_SEASON_ID) {
     localStorage.removeItem(STORAGE.cachedRanking);
     $("seasonLabel").textContent = CURRENT_SEASON_NAME;
-    $("rankingList").innerHTML = '<article class="ranking-card wide">Drizzle Seasonの順位はまだありません。</article>';
+    $("rankingList").innerHTML = `<article class="ranking-card wide">${CURRENT_SEASON_NAME}の順位はまだありません。</article>`;
     $("myRankStatus").textContent = "古いシーズンの記録は表示しません。";
     return;
   }
@@ -1162,7 +1162,7 @@ function renderRanking(data) {
       </article>
     `).join("");
   } else {
-    $("rankingList").innerHTML = '<article class="ranking-card wide">Drizzle Seasonのランキングはまだありません。</article>';
+    $("rankingList").innerHTML = `<article class="ranking-card wide">${CURRENT_SEASON_NAME}のランキングはまだありません。</article>`;
   }
 
   if (me && me.rank) {
