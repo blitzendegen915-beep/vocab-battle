@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1800 420" role="img" aria-labelledby="title desc">
+  <title id="title">Ember Season</title>
+  <desc id="desc">Vocab Battle Ember Season banner. Rating mode is limited to five attempts per day.</desc>
+  <rect width="1800" height="420" fill="#2c241f"/>
+  <circle cx="220" cy="360" r="240" fill="#472d23"/>
+  <circle cx="560" cy="110" r="190" fill="#533122"/>
+  <circle cx="1220" cy="300" r="250" fill="#432b23"/>
+  <circle cx="1570" cy="120" r="230" fill="#4e3022"/>
+  <g stroke-linecap="round" stroke-width="6">
+    <path d="M140 86l58-22M280 260l42-22M720 70l72-22M870 210l50-22M1110 92l66-22M1390 250l54-22M1640 78l62-22M1510 330l46-22" stroke="#ffba60"/>
+    <path d="M420 330l36-16M980 320l40-16M1320 95l34-16M1700 250l38-16" stroke="#d65b2e"/>
+  </g>
+  <rect x="110" y="42" width="310" height="50" rx="25" fill="#fff6e6"/>
+  <text x="150" y="77" fill="#1f1c19" font-family="Arial, 'Segoe UI', sans-serif" font-size="34" font-weight="800">VOCAB BATTLE</text>
+  <text x="110" y="226" fill="#fff6e6" font-family="Arial, 'Segoe UI', sans-serif" font-size="112" font-weight="900">EMBER SEASON</text>
+  <text x="110" y="294" fill="#fff6e6" font-family="Arial, 'Segoe UI', sans-serif" font-size="46" font-weight="800">NEW RATING SEASON</text>
+  <rect x="110" y="316" width="810" height="66" rx="33" fill="#fff6e6"/>
+  <text x="150" y="357" fill="#1f1c19" font-family="Arial, 'Segoe UI', sans-serif" font-size="34" font-weight="900">RATING MODE: 5 ATTEMPTS PER DAY</text>
+  <g transform="translate(1440 220)">
+    <polygon points="0,-130 92,-20 52,108 0,142 -52,108 -92,-20" fill="#fff6e6"/>
+    <polygon points="0,-80 57,-12 32,67 0,88 -32,67 -57,-12" fill="#ffba60"/>
+    <polygon points="0,-49 35,-8 20,41 0,54 -20,41 -35,-8" fill="#d65b2e"/>
+    <polygon points="0,-80 36,20 0,86 -24,18" fill="#2c241f"/>
+  </g>
+</svg>
