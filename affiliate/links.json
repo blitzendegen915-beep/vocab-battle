@@ -1,0 +1,42 @@
+{
+  "chatgpt": {
+    "label": "ChatGPT 公式サイトはこちら",
+    "url": "",
+    "official": "https://chatgpt.com/"
+  },
+  "claude": {
+    "label": "Claude 公式サイトはこちら",
+    "url": "",
+    "official": "https://claude.ai/"
+  },
+  "gemini": {
+    "label": "Gemini 公式サイトはこちら",
+    "url": "",
+    "official": "https://gemini.google.com/"
+  },
+  "notion-ai": {
+    "label": "Notion AI 公式サイトはこちら",
+    "url": "",
+    "official": "https://www.notion.so/product/ai"
+  },
+  "canva": {
+    "label": "Canva 公式サイトはこちら",
+    "url": "",
+    "official": "https://www.canva.com/"
+  },
+  "midjourney": {
+    "label": "Midjourney 公式サイトはこちら",
+    "url": "",
+    "official": "https://www.midjourney.com/"
+  },
+  "github-copilot": {
+    "label": "GitHub Copilot 公式サイトはこちら",
+    "url": "",
+    "official": "https://github.com/features/copilot"
+  },
+  "perplexity": {
+    "label": "Perplexity 公式サイトはこちら",
+    "url": "",
+    "official": "https://www.perplexity.ai/"
+  }
+}
