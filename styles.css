@@ -2032,3 +2032,36 @@ textarea:focus {
     grid-template-columns: 48px 1fr auto;
   }
 }
+
+
+/* Score contrast: keep every score readable at a glance. */
+.score-panel {
+  background: linear-gradient(145deg, #f4fbf9, #e3f2ee);
+  border-color: #c3ddd6;
+}
+
+.score-panel div,
+.score-panel div:first-child {
+  background: linear-gradient(135deg, #ffffff, #edf8f4);
+  border: 1px solid #cfe4dd;
+  color: var(--ink);
+}
+
+.score-panel div:first-child .label,
+.score-panel div:not(:first-child) .label,
+.score-panel div:not(:first-child) .mini-status,
+.score-panel .attempt-card .label,
+.score-panel .attempt-card small,
+.score-panel .mini-status {
+  color: #4d686d;
+}
+
+.score-panel div:first-child strong,
+.score-panel div:not(:first-child) strong {
+  color: #12343b;
+}
+
+.score-panel .attempt-card {
+  background: linear-gradient(135deg, #fff8e9, #fff1ce);
+  border-color: #ecd4a3;
+}
