@@ -15,6 +15,7 @@ const STORAGE = {
   cachedWordSets: "cachedWordSets",
   selectedWordSet: "selectedWordSet",
   selectedUnit: "selectedUnit",
+  selectedEntryType: "selectedEntryType",
   battleMode: "battleMode",
   rangeStart: "rangeStart",
   rangeEnd: "rangeEnd",
@@ -23,23 +24,22 @@ const STORAGE = {
 };
 const ADMIN_SESSION_KEY = "vocabBattleAdminUnlocked";
 const ADMIN_PIN_SESSION_KEY = "vocabBattleAdminPin";
-const ADMIN_PASSWORD_HASH = "75ae5d65da5fbbbcaf62828269c71b049d88755196f6fab97dd3a04a6720fd92";
 const CURRENT_SEASON_ID = "ember_season";
 const CURRENT_SEASON_NAME = "Ember Season";
-const CLIENT_DATA_VERSION = "ember_season_attempts_v1";
-const DEFAULT_GAS_URL = "https://script.google.com/macros/s/AKfycbxEQvr8axjvFfIwQSOOd_rIYy-cyt92BZ62eAxjuY1XdojQsYYDV1Ne7svW3_UkS4Rt/exec";
+const CLIENT_DATA_VERSION = "ember_season_attempts_v2";
+const DEFAULT_GAS_URL = "https://script.google.com/macros/s/AKfycbw8UFeH9MrSEJ6dezXlrF8Bs_Dw2yifZaupk8G5lmpMf-_g66rj1yNY_s3Rk6GQUjeO/exec";
 const OLD_GAS_URLS = [
   "https://script.google.com/macros/s/AKfycbytVz4FsKrCy1160KkpnvksFiluhOW8EtQQtppF1SW1S3X_9-Ki05AjSaoylhro06ti/exec",
   "https://script.google.com/macros/s/AKfycbw4wucQB8S-zT530pAJk1ogBWfHBQ4XBb86lebV8yuLCIRghx88Wt4IunD07fAEcgeE/exec"
 ];
 
 const sampleWords = [
-  { word: "important", meaning: "重要な", difficulty: 6, unit: "Sample", enabled: true },
-  { word: "accurate", meaning: "正確な", difficulty: 12, unit: "Sample", enabled: true },
-  { word: "reluctant", meaning: "気が進まない", difficulty: 19, unit: "Sample", enabled: true },
-  { word: "dog", meaning: "犬", difficulty: 1, unit: "Sample", enabled: true },
-  { word: "implicitly", meaning: "暗黙のうちに", difficulty: 30, unit: "Sample", enabled: true },
-  { word: "ambiguous", meaning: "曖昧な", difficulty: 24, unit: "Sample", enabled: true }
+  { word: "important", meaning: "重要な", difficulty: 6, unit: "Sample", type: "word", enabled: true },
+  { word: "accurate", meaning: "正確な", difficulty: 12, unit: "Sample", type: "word", enabled: true },
+  { word: "reluctant", meaning: "気が進まない", difficulty: 19, unit: "Sample", type: "word", enabled: true },
+  { word: "take part in", meaning: "参加する", difficulty: 8, unit: "Sample", type: "idiom", enabled: true },
+  { word: "in the long run", meaning: "長い目で見れば", difficulty: 18, unit: "Sample", type: "idiom", enabled: true },
+  { word: "ambiguous", meaning: "曖昧な", difficulty: 24, unit: "Sample", type: "word", enabled: true }
 ];
 
 let words = [];
@@ -64,6 +64,7 @@ let startingQuiz = false;
 let ratingAttemptAllowed = true;
 let attemptUsedToday = null;
 let attemptLimitToday = DEFAULT_SETTINGS.dailyAttemptLimit;
+let cloudSeasonMismatch = false;
 
 const $ = (id) => document.getElementById(id);
 
@@ -80,26 +81,12 @@ document.querySelectorAll(".tab").forEach((tab) => {
 
 async function confirmAdminAccess() {
   if (sessionStorage.getItem(ADMIN_SESSION_KEY) === "true") return true;
-  if (!crypto.subtle) {
-    alert("このブラウザでは管理者確認ができません。別のブラウザで開いてください。");
-    return false;
-  }
   const password = prompt("管理者パスワードを入力してください。");
   if (password === null) return false;
-  const isValid = (await sha256(password)) === ADMIN_PASSWORD_HASH;
-  if (isValid) {
-    sessionStorage.setItem(ADMIN_SESSION_KEY, "true");
-    sessionStorage.setItem(ADMIN_PIN_SESSION_KEY, password);
-    return true;
-  }
-  alert("パスワードが違います。");
-  return false;
-}
-
-async function sha256(text) {
-  const data = new TextEncoder().encode(text);
-  const buffer = await crypto.subtle.digest("SHA-256", data);
-  return [...new Uint8Array(buffer)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  // The backend validates this PIN for every privileged action. Keep it out of the public bundle.
+  sessionStorage.setItem(ADMIN_SESSION_KEY, "true");
+  sessionStorage.setItem(ADMIN_PIN_SESSION_KEY, password);
+  return true;
 }
 
 function applyGasUrlFromQuery() {
@@ -152,7 +139,9 @@ function updateCloudStatus(message = "") {
   const url = getGasUrl();
   $("gasUrlInput").value = url;
   $("cloudStatus").textContent = message || (url ? "共有保存が有効です。" : "GAS URLが設定されていません。");
-  $("syncStatus").textContent = url ? "共有保存が有効です。" : "共有保存は未設定です。";
+  $("syncStatus").textContent = cloudSeasonMismatch
+    ? `GAS側が${settings.currentSeason}のままです。Ember Season用に更新してください。`
+    : (url ? "共有保存が有効です。" : "共有保存は未設定です。");
   $("adminSaveStatus").textContent = url ? "有効" : "未設定";
 }
 
@@ -289,6 +278,10 @@ async function registerPlayer() {
       updatePlayerStatus(data.message || "プレイヤー登録に失敗しました。");
       return;
     }
+    if (String(data.player?.seasonId || "") !== CURRENT_SEASON_ID) {
+      updatePlayerStatus(`GAS側が${data.player?.seasonName || "旧シーズン"}のままです。管理者がGASを更新してください。`);
+      return;
+    }
     saveCurrentPlayer(data.player);
     $("pin").value = "";
     loadRanking();
@@ -311,15 +304,37 @@ function pickColumn(row, names, fallbackIndex) {
   return Object.values(row)[fallbackIndex];
 }
 
+function normalizeEntryType(value, expression = "") {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (["idiom", "phrase", "phrasal verb", "熟語", "熟語・連語", "連語", "イディオム"].includes(raw)) return "idiom";
+  if (["word", "vocabulary", "単語", "英単語", "語"].includes(raw)) return "word";
+  return /\s/.test(String(expression).trim()) ? "idiom" : "word";
+}
+
+function getEntryTypeValue(item) {
+  return normalizeEntryType(item?.entryType ?? item?.type ?? item?.kind ?? item?.["種類"] ?? item?.["区分"], item?.word);
+}
+
+function getEntryTypeLabel(type = getSelectedEntryType()) {
+  if (type === "idiom") return "熟語";
+  if (type === "word") return "単語";
+  return "単語＋熟語";
+}
+
 function normalizeWord(item) {
+  const word = String(item.word || item["英単語"] || item["英熟語"] || item["単語"] || item["熟語"] || "").trim();
   const difficulty = Number(item.difficulty || item["難易度"] || 1);
   const enabledRaw = item.enabled ?? item["有効"] ?? true;
   const enabled = enabledRaw === true || String(enabledRaw).toUpperCase() === "TRUE" || String(enabledRaw) === "1";
   return {
-    word: String(item.word || item["英単語"] || item["単語"] || "").trim(),
+    word,
     meaning: String(item.meaning || item["意味"] || item["日本語"] || "").trim(),
     difficulty: Number.isFinite(difficulty) && difficulty > 0 ? difficulty : 1,
     unit: String(item.unit || item["単元"] || "").trim(),
+    entryType: normalizeEntryType(
+      item.entryType ?? item.type ?? item.kind ?? item["種類"] ?? item["区分"] ?? item["出題種別"],
+      word
+    ),
     enabled,
     sourceNumber: Number(item.sourceNumber || item["番号"] || item["No"] || 0)
   };
@@ -327,13 +342,19 @@ function normalizeWord(item) {
 
 function withSourceNumbers(list) {
   const unitCounts = {};
+  const entryTypeCounts = {};
   return list.map((word, index) => {
     const unit = getUnitValue(word);
+    const entryType = getEntryTypeValue(word);
+    const countKey = `${unit}\u0000${entryType}`;
     unitCounts[unit] = (unitCounts[unit] || 0) + 1;
+    entryTypeCounts[countKey] = (entryTypeCounts[countKey] || 0) + 1;
     return {
       ...word,
+      entryType,
       sourceNumber: Number(word.sourceNumber || index + 1),
-      unitNumber: unitCounts[unit]
+      unitNumber: unitCounts[unit],
+      entryTypeNumber: entryTypeCounts[countKey]
     };
   });
 }
@@ -344,7 +365,8 @@ function parseRows(rows) {
     meaning: pickColumn(row, ["meaning", "意味", "日本語", "ja"], 1),
     difficulty: pickColumn(row, ["difficulty", "難易度", "level"], 2),
     unit: pickColumn(row, ["unit", "単元"], 3),
-    enabled: pickColumn(row, ["enabled", "有効"], 4) || true
+    enabled: pickColumn(row, ["enabled", "有効"], 4) ?? true,
+    entryType: pickColumn(row, ["entryType", "type", "kind", "種類", "区分", "出題種別"], 5)
   })).filter((item) => item.word && item.meaning && item.enabled);
 }
 
@@ -353,26 +375,42 @@ function parsePastedWords(text) {
   if (!lines.length) return [];
   const rows = lines.map((line) => line.split(/\t|,/).map((cell) => cell.trim()));
   const first = rows[0].map((cell) => normalizeHeader(cell));
-  const hasHeader = first.some((cell) => ["word", "英単語", "単語"].includes(cell));
-  return (hasHeader ? rows.slice(1) : rows).map((cells) => normalizeWord({
-    word: cells[0],
-    meaning: cells[1],
-    difficulty: cells[2],
-    unit: cells[3],
-    enabled: cells[4] ?? true
-  })).filter((item) => item.word && item.meaning && item.enabled);
+  const hasHeader = first.some((cell) => ["word", "英単語", "英熟語", "単語", "熟語", "type", "種類", "区分"].includes(cell));
+  const dataRows = hasHeader ? rows.slice(1) : rows;
+  return dataRows.map((cells) => {
+    if (!hasHeader) {
+      return normalizeWord({
+        word: cells[0],
+        meaning: cells[1],
+        difficulty: cells[2],
+        unit: cells[3],
+        enabled: cells[4] ?? true,
+        entryType: cells[5]
+      });
+    }
+    const row = Object.fromEntries(cells.map((cell, index) => [first[index] || `column${index}`, cell]));
+    return normalizeWord({
+      word: pickColumn(row, ["word", "英単語", "英熟語", "単語", "熟語", "english"], 0),
+      meaning: pickColumn(row, ["meaning", "意味", "日本語", "ja"], 1),
+      difficulty: pickColumn(row, ["difficulty", "難易度", "level"], 2),
+      unit: pickColumn(row, ["unit", "単元"], 3),
+      enabled: pickColumn(row, ["enabled", "有効"], 4) ?? true,
+      entryType: pickColumn(row, ["entryType", "type", "kind", "種類", "区分", "出題種別"], 5)
+    });
+  }).filter((item) => item.word && item.meaning && item.enabled);
 }
 
 function setWords(nextWords, source = "local") {
-  words = withSourceNumbers(nextWords);
+  words = withSourceNumbers(nextWords.map(normalizeWord));
   localStorage.setItem(STORAGE.cachedWords, JSON.stringify(words));
   renderUnitOptions();
+  renderEntryTypeOptions();
   updateActiveWords();
   const required = getRequiredWordCount();
   $("wordStatus").textContent = activeWords.length >= required
-    ? `${words.length}語を読み込みました。教材: ${getSelectedRangeLabel()}（${activeWords.length}語）${source === "cloud" ? "（共有）" : ""}`
-    : `${words.length}語を読み込みました。選んだ範囲には単語が${required}語以上必要です。`;
-  $("adminWordStatus").textContent = `${words.length}語の端末内単語データがあります。`;
+    ? `${words.length}問を読み込みました。教材: ${getSelectedRangeLabel()}（${activeWords.length}問）${source === "cloud" ? "（共有）" : ""}`
+    : `${words.length}問を読み込みました。選んだ範囲には問題が${required}問以上必要です。`;
+  $("adminWordStatus").textContent = `${words.length}問の端末内データがあります。`;
   $("adminWordsCount").textContent = words.length;
   updateStartState();
 }
@@ -383,6 +421,11 @@ function getUnitValue(word) {
 
 function getSelectedUnit() {
   return localStorage.getItem(STORAGE.selectedUnit) || "ターゲット1900";
+}
+
+function getSelectedEntryType() {
+  const selected = localStorage.getItem(STORAGE.selectedEntryType) || "all";
+  return ["all", "word", "idiom"].includes(selected) ? selected : "all";
 }
 
 function getSelectedWordSet() {
@@ -416,7 +459,7 @@ function getRequiredWordCount() {
 }
 
 function normalizeWrittenAnswer(value) {
-  return String(value || "").trim().toLowerCase();
+  return String(value ?? "").normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase("en-US");
 }
 
 function getSelectedUnitLabel() {
@@ -436,29 +479,36 @@ function isNumberRangeSpecified() {
 }
 
 function getSelectedRangeLabel() {
-  if (!isPracticeMode()) return `${getSelectedUnitLabel()} / 全範囲`;
+  const contentLabel = getEntryTypeLabel();
+  if (!isPracticeMode()) return `${getSelectedUnitLabel()} / ${contentLabel} / 全範囲`;
   const { start, end } = getNumberRange();
   const unitLabel = getSelectedUnitLabel();
   const numberLabel = end ? `${start}〜${end}` : `${start}〜最後`;
-  return `${unitLabel} / ${numberLabel}`;
+  return `${unitLabel} / ${contentLabel} / ${numberLabel}`;
 }
 
 function getSelectedUnitWords() {
   const selected = getSelectedUnit();
-  return words.filter((word) => getUnitValue(word) === selected);
+  const selectedType = getSelectedEntryType();
+  return words.filter((word) => getUnitValue(word) === selected && (selectedType === "all" || getEntryTypeValue(word) === selectedType));
 }
 
 function getSelectedUnitMaxNumber(unitWords = getSelectedUnitWords()) {
   return unitWords.reduce((max, word, index) => {
-    const number = Number(word.unitNumber || index + 1);
+    const number = getEntryNumber(word, index + 1);
     return Number.isFinite(number) && number > max ? number : max;
   }, unitWords.length);
+}
+
+function getEntryNumber(word, fallback = 1) {
+  const number = getSelectedEntryType() === "all" ? word.unitNumber : word.entryTypeNumber || word.unitNumber;
+  return Number(number || fallback);
 }
 
 function updateRangeGuide(unitWords = getSelectedUnitWords()) {
   const maxNumber = getSelectedUnitMaxNumber(unitWords);
   if (!words.length) {
-    $("rangeGuide").textContent = "単語データを読み込むと範囲が表示されます。";
+    $("rangeGuide").textContent = "単語・熟語データを読み込むと範囲が表示されます。";
     return;
   }
   $("rangeGuide").textContent = `${getSelectedUnitLabel()}で指定できる範囲: 1〜${maxNumber}`;
@@ -507,6 +557,25 @@ function renderUnitOptions() {
   localStorage.setItem(STORAGE.selectedUnit, select.value);
 }
 
+function renderEntryTypeOptions() {
+  const select = $("entryTypeSelect");
+  if (!select) return;
+  const selected = getSelectedEntryType();
+  const counts = words.reduce((result, item) => {
+    const type = getEntryTypeValue(item);
+    result[type] = (result[type] || 0) + 1;
+    return result;
+  }, { word: 0, idiom: 0 });
+  const options = [
+    ["all", `単語＋熟語（${words.length}）`],
+    ["word", `単語だけ（${counts.word}）`],
+    ["idiom", `熟語だけ（${counts.idiom}）`]
+  ];
+  select.innerHTML = options.map(([value, label]) => `<option value="${value}">${label}</option>`).join("");
+  select.value = options.some(([value]) => value === selected) ? selected : "all";
+  localStorage.setItem(STORAGE.selectedEntryType, select.value);
+}
+
 function updateActiveWords() {
   const { start, end } = getNumberRange();
   const unitWords = getSelectedUnitWords();
@@ -514,13 +583,13 @@ function updateActiveWords() {
   updateRangeGuide(unitWords);
   activeWords = isPracticeMode()
     ? unitWords.filter((word) => {
-      const number = Number(word.unitNumber || 0);
+      const number = getEntryNumber(word, 0);
       return number >= start && (!end || number <= end);
     })
     : unitWords;
   $("unitStatus").textContent = words.length
-    ? `${getBattleModeLabel()}: ${getSelectedRangeLabel()}（${activeWords.length}語）`
-    : "単語データを読み込むと選べます。";
+    ? `${getBattleModeLabel()}: ${getSelectedRangeLabel()}（${activeWords.length}問）`
+    : "単語・熟語データを読み込むと選べます。";
   updateStartState();
 }
 
@@ -583,20 +652,22 @@ async function loadCloudWords() {
     $("wordStatus").textContent = "GAS URLが設定されていません。";
     return;
   }
-  $("wordStatus").textContent = "共有単語を読み込んでいます。";
+    $("wordStatus").textContent = "共有単語・熟語を読み込んでいます。";
   try {
     const data = await jsonp("words", { setId: getSelectedWordSet() });
     if (!data.ok || !Array.isArray(data.words)) {
-      $("wordStatus").textContent = "共有単語を読み込めませんでした。";
+      $("wordStatus").textContent = "共有単語・熟語を読み込めませんでした。";
       return;
     }
     setWords(data.words.map(normalizeWord).filter((item) => item.word && item.meaning && item.enabled), "cloud");
   } catch {
-    $("wordStatus").textContent = "共有単語を読み込めませんでした。";
+    $("wordStatus").textContent = "共有単語・熟語を読み込めませんでした。";
   }
 }
 
 function setSettings(nextSettings, source = "local") {
+  const cloudSeason = String(nextSettings.currentSeason || "").trim();
+  cloudSeasonMismatch = source === "cloud" && Boolean(cloudSeason) && cloudSeason !== CURRENT_SEASON_ID;
   settings = {
     quizLength: Number(nextSettings.quizLength || DEFAULT_SETTINGS.quizLength),
     timeLimitSec: Number(nextSettings.timeLimitSec || DEFAULT_SETTINGS.timeLimitSec),
@@ -605,7 +676,7 @@ function setSettings(nextSettings, source = "local") {
     seasonAttemptLimitEnabled: nextSettings.seasonAttemptLimitEnabled === true || String(nextSettings.seasonAttemptLimitEnabled).toUpperCase() === "TRUE",
     seasonAttemptLimit: Number(nextSettings.seasonAttemptLimit || DEFAULT_SETTINGS.seasonAttemptLimit)
   };
-  settings.currentSeason = nextSettings.currentSeason || CURRENT_SEASON_ID;
+  settings.currentSeason = cloudSeason || CURRENT_SEASON_ID;
   settings.dailyAttemptLimitEnabled = true;
   settings.dailyAttemptLimit = 5;
   settings.seasonAttemptLimitEnabled = false;
@@ -617,6 +688,9 @@ function setSettings(nextSettings, source = "local") {
   $("timeLimitDisplay").textContent = `${settings.timeLimitSec}秒`;
   $("adminQuizLength").textContent = settings.quizLength;
   $("adminTimeLimit").textContent = `${settings.timeLimitSec}秒`;
+  if (cloudSeasonMismatch) {
+    $("syncStatus").textContent = `GAS側が${settings.currentSeason}のままです。Ember Season用に更新してください。`;
+  }
   updateScorePanel();
 }
 
@@ -640,15 +714,30 @@ async function loadCloudSettings() {
     const data = await jsonp("settings");
     if (data.ok && data.settings) setSettings(data.settings, "cloud");
   } catch {
-    setSettings(settings);
+    setSettings(settings, cloudSeasonMismatch ? "cloud" : "local");
   }
+}
+
+function applyCloudSeasonGuard(data) {
+  const cloudSeasonId = String(data?.seasonId || "").trim();
+  if (!cloudSeasonId) return false;
+  if (cloudSeasonId === CURRENT_SEASON_ID) {
+    cloudSeasonMismatch = false;
+    return false;
+  }
+  cloudSeasonMismatch = true;
+  ratingAttemptAllowed = false;
+  $("syncStatus").textContent = `GAS側が${data.seasonName || cloudSeasonId}のままです。Ember Season用に更新してください。`;
+  updateStartState();
+  return true;
 }
 
 function updateStartState() {
   const required = getRequiredWordCount();
-  const hasEnoughWords = activeWords.length >= required || words.length >= required;
+  const hasEnoughWords = activeWords.length >= required;
   const blockedByLimit = !isPracticeMode() && !ratingAttemptAllowed;
-  $("startButton").disabled = !(currentPlayer && hasEnoughWords) || blockedByLimit || startingQuiz;
+  const blockedBySeason = !isPracticeMode() && cloudSeasonMismatch;
+  $("startButton").disabled = !(currentPlayer && hasEnoughWords) || blockedByLimit || blockedBySeason || startingQuiz;
   updateAttemptPanel();
   updateRewardPracticeButton();
 }
@@ -719,6 +808,10 @@ function buildQuiz() {
   });
 }
 
+function isQuizRunning() {
+  return !$('questionBox').classList.contains('hidden');
+}
+
 async function reserveRatingAttempt() {
   if (isPracticeMode()) {
     activeAttemptId = "";
@@ -740,6 +833,7 @@ async function reserveRatingAttempt() {
       studentNo: currentPlayer.studentNo || "",
       nickname: currentPlayer.nickname || ""
     });
+    if (applyCloudSeasonGuard(data)) return false;
     if (!data.ok || !data.allowed) {
       ratingAttemptAllowed = false;
       attemptUsedToday = Number(data.countToday ?? data.countSeason ?? settings.dailyAttemptLimit ?? 5);
@@ -749,7 +843,7 @@ async function reserveRatingAttempt() {
       return false;
     }
     activeAttemptId = data.attemptId || "";
-    const used = Number(data.countToday || 0);
+    const used = Number(data.countToday ?? data.countSeason ?? 0);
     const limit = Number(data.limit || settings.dailyAttemptLimit || 5);
     attemptUsedToday = used;
     attemptLimitToday = limit;
@@ -779,13 +873,8 @@ async function startQuiz() {
     }
     const required = getRequiredWordCount();
     if (activeWords.length < required) {
-      if (words.length >= required) {
-        activeWords = [...words];
-        $("wordStatus").textContent = "選んだ範囲の単語が不足していたため、読み込み済み単語から開始します。";
-      } else {
-        $("wordStatus").textContent = `単語が${required}語以上必要です。共有単語を読み込んでください。`;
-        return;
-      }
+      $("wordStatus").textContent = `選んだ範囲には問題が${required}問以上必要です。教材・出題内容・範囲を変更してください。`;
+      return;
     }
     activeAttemptId = "";
     if (!(await reserveRatingAttempt())) return;
@@ -813,6 +902,7 @@ function showQuestion() {
   const writing = isWritingMode();
   questionStartedAt = Date.now();
   $("questionNumber").textContent = `第${currentIndex + 1}問`;
+  $("entryTypeLabel").textContent = getEntryTypeLabel(question.entryType);
   $("difficultyLabel").textContent = `難易度 ${question.difficulty}`;
   $("wordPrompt").textContent = writing ? question.meaning : question.word;
   $("feedback").textContent = "";
@@ -821,7 +911,7 @@ function showQuestion() {
     const form = document.createElement("form");
     form.className = "writing-form";
     form.innerHTML = `
-      <label for="writingAnswer">英単語を入力</label>
+      <label for="writingAnswer">${question.entryType === "idiom" ? "英熟語を入力" : "英単語を入力"}</label>
       <div class="writing-row">
         <input id="writingAnswer" class="writing-input" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" />
         <button id="writingSubmit" type="submit">回答</button>
@@ -906,6 +996,7 @@ function answer(choice, timedOut, selectedButton) {
 
   answerLogs.push({
     word: question.word,
+    entryType: question.entryType,
     correctMeaning: writing ? question.word : question.meaning,
     selectedMeaning: timedOut ? "" : choice,
     promptMeaning: question.meaning,
@@ -943,14 +1034,18 @@ async function finishQuiz() {
   const powerAfter = Math.max(0, powerBeforeBattle + delta);
   if (!scoreMode) {
     const seasonBestPower = Math.max(Number(currentPlayer.seasonBestPower || 1000), powerAfter);
+    const allTimeBestPower = Math.max(
+      Number(currentPlayer.allTimeBestPower || currentPlayer.bestPower || 1000),
+      powerAfter
+    );
     currentPlayer = {
       ...currentPlayer,
       seasonId: CURRENT_SEASON_ID,
       seasonName: CURRENT_SEASON_NAME,
       power: powerAfter,
       seasonBestPower,
-      bestPower: seasonBestPower,
-      allTimeBestPower: seasonBestPower,
+      bestPower: allTimeBestPower,
+      allTimeBestPower,
       lastPlayed: new Date().toISOString()
     };
     saveCurrentPlayer(currentPlayer);
@@ -968,7 +1063,7 @@ async function finishQuiz() {
   if (wasRetryWrongMode) {
     retryWrongMode = false;
     updateModeUI();
-    $("wordStatus").textContent = "間違えた単語の再挑戦が終わりました。ガチモードかお気軽モードを選んで次を始められます。";
+    $("wordStatus").textContent = "間違えた問題の再挑戦が終わりました。ガチモードかお気軽モードを選んで次を始められます。";
   }
 
   const record = {
@@ -1019,8 +1114,9 @@ function renderAnswerReview() {
       <article class="answer-review-item ${resultClass}">
         <div class="answer-review-head">
           <span>第${index + 1}問</span>
-          <strong>${escapeHtml(log.word)}</strong>
-          <em>${resultLabel}</em>
+           <strong>${escapeHtml(log.word)}</strong>
+           <small>${getEntryTypeLabel(log.entryType)}</small>
+           <em>${resultLabel}</em>
         </div>
         <dl>
           ${log.promptMeaning ? `<div><dt>出題</dt><dd>${escapeHtml(log.promptMeaning)}</dd></div>` : ""}
@@ -1038,7 +1134,7 @@ async function copyAnswerReview() {
     const selected = log.timedOut ? "時間切れ" : (log.selectedMeaning || "未回答");
     const mark = log.isCorrect ? "○" : "×";
     const prompt = log.promptMeaning ? ` / 出題: ${log.promptMeaning}` : "";
-    return `${index + 1}. ${mark} ${log.word}${prompt} / 正解: ${log.correctMeaning} / 回答: ${selected}`;
+    return `${index + 1}. ${mark} [${getEntryTypeLabel(log.entryType)}] ${log.word}${prompt} / 正解: ${log.correctMeaning} / 回答: ${selected}`;
   });
   if (!lines.length) {
     alert("コピーする答え合わせがありません。");
@@ -1055,7 +1151,7 @@ async function retryWrongWords() {
     .map((log) => currentQuiz.find((word) => word.word === log.word))
     .filter(Boolean);
   if (wrongWords.length < 1) {
-    alert("間違えた単語がありません。");
+    alert("間違えた問題がありません。");
     return;
   }
   const distractorPool = words.length ? words : currentQuiz;
@@ -1083,7 +1179,7 @@ async function retryWrongWords() {
   answerLogs = [];
   totalWeight = currentQuiz.reduce((sum, item) => sum + item.difficulty, 0);
   powerBeforeBattle = Number(currentPlayer?.power || 1000);
-  $("wordStatus").textContent = `間違えた単語${wrongWords.length}語だけ再挑戦中です。${getBattleModeLabel(retryMode)}なので戦闘力には反映しません。`;
+  $("wordStatus").textContent = `間違えた問題${wrongWords.length}問だけ再挑戦中です。${getBattleModeLabel(retryMode)}なので戦闘力には反映しません。`;
   updateScorePanel();
   showQuestion();
 }
@@ -1091,6 +1187,7 @@ async function refreshAttemptStatus() {
   if (!currentPlayer || !getGasUrl()) return;
   try {
     const data = await jsonp("attemptStatus", { playerId: currentPlayer.playerId });
+    if (applyCloudSeasonGuard(data)) return;
     if (!data.ok || !data.enabled) return;
     ratingAttemptAllowed = Boolean(data.allowed);
     const used = Number(data.countToday ?? data.countSeason ?? 0);
@@ -1145,7 +1242,7 @@ function renderRanking(data) {
   if (season.seasonId && season.seasonId !== CURRENT_SEASON_ID) {
     localStorage.removeItem(STORAGE.cachedRanking);
     $("seasonLabel").textContent = CURRENT_SEASON_NAME;
-    $("rankingList").innerHTML = `<article class="ranking-card wide">${CURRENT_SEASON_NAME}の順位はまだありません。</article>`;
+    $("rankingList").innerHTML = `<article class="ranking-card wide empty-ranking"><span class="empty-ranking-icon" aria-hidden="true">✦</span><strong>このシーズンのランキングはまだ空です</strong><p>レーティング戦を1回完了すると、今期戦闘力がここに表示されます。</p></article>`;
     $("myRankStatus").textContent = "古いシーズンの記録は表示しません。";
     return;
   }
@@ -1162,7 +1259,7 @@ function renderRanking(data) {
       </article>
     `).join("");
   } else {
-    $("rankingList").innerHTML = `<article class="ranking-card wide">${CURRENT_SEASON_NAME}のランキングはまだありません。</article>`;
+    $("rankingList").innerHTML = `<article class="ranking-card wide empty-ranking"><span class="empty-ranking-icon" aria-hidden="true">✦</span><strong>このシーズンのランキングはまだ空です</strong><p>レーティング戦を1回完了すると、今期戦闘力がここに表示されます。</p></article>`;
   }
 
   if (me && me.rank) {
@@ -1342,33 +1439,62 @@ $("sampleButton").addEventListener("click", () => {
 });
 document.querySelectorAll('input[name="battleMode"]').forEach((input) => {
   input.addEventListener("change", () => {
+    if (isQuizRunning()) {
+      updateModeUI();
+      $("wordStatus").textContent = "テスト中はモードを変更できません。結果が出てから変更してください。";
+      return;
+    }
     resetQuizSurfaceForSelectionChange();
     localStorage.setItem(STORAGE.battleMode, input.value);
     updateModeUI();
     const required = getRequiredWordCount();
     $("wordStatus").textContent = activeWords.length >= required
-      ? `${getBattleModeLabel(input.value)}: ${getSelectedRangeLabel()}（${activeWords.length}語）`
-      : `選んだ教材には単語が${required}語以上必要です。`;
+      ? `${getBattleModeLabel(input.value)}: ${getSelectedRangeLabel()}（${activeWords.length}問）`
+      : `選んだ教材には問題が${required}問以上必要です。`;
   });
 });
 $("unitSelect").addEventListener("change", () => {
+  if (isQuizRunning()) {
+    $("unitSelect").value = getSelectedUnit();
+    $("wordStatus").textContent = "テスト中は教材を変更できません。結果が出てから変更してください。";
+    return;
+  }
   resetQuizSurfaceForSelectionChange();
   localStorage.setItem(STORAGE.selectedUnit, $("unitSelect").value);
   updateActiveWords();
   const required = getRequiredWordCount();
   $("wordStatus").textContent = activeWords.length >= required
-    ? `${getBattleModeLabel()}: ${getSelectedRangeLabel()}（${activeWords.length}語）`
-    : `選んだ範囲には単語が${required}語以上必要です。`;
+    ? `${getBattleModeLabel()}: ${getSelectedRangeLabel()}（${activeWords.length}問）`
+    : `選んだ範囲には問題が${required}問以上必要です。`;
+});
+$("entryTypeSelect").addEventListener("change", () => {
+  if (isQuizRunning()) {
+    $("entryTypeSelect").value = getSelectedEntryType();
+    $("wordStatus").textContent = "テスト中は出題内容を変更できません。結果が出てから変更してください。";
+    return;
+  }
+  resetQuizSurfaceForSelectionChange();
+  localStorage.setItem(STORAGE.selectedEntryType, $("entryTypeSelect").value);
+  updateActiveWords();
+  const required = getRequiredWordCount();
+  $("wordStatus").textContent = activeWords.length >= required
+    ? `${getBattleModeLabel()}: ${getSelectedRangeLabel()}（${activeWords.length}問）`
+    : `選んだ出題内容には問題が${required}問以上必要です。`;
 });
 ["rangeStart", "rangeEnd"].forEach((id) => {
   $(id).addEventListener("input", () => {
+    if (isQuizRunning()) {
+      restoreNumberRange();
+      $("wordStatus").textContent = "テスト中は範囲を変更できません。結果が出てから変更してください。";
+      return;
+    }
     resetQuizSurfaceForSelectionChange();
     saveNumberRange();
     updateActiveWords();
     const required = getRequiredWordCount();
     $("wordStatus").textContent = activeWords.length >= required
-      ? `${getBattleModeLabel()}: ${getSelectedRangeLabel()}（${activeWords.length}語）`
-      : `選んだ範囲には単語が${required}語以上必要です。`;
+      ? `${getBattleModeLabel()}: ${getSelectedRangeLabel()}（${activeWords.length}問）`
+      : `選んだ範囲には問題が${required}問以上必要です。`;
   });
 });
 $("startButton").addEventListener("click", startQuiz);
@@ -1411,14 +1537,15 @@ $("applyWordsButton").addEventListener("click", () => {
 });
 
 $("clearWordsButton").addEventListener("click", () => {
-  if (!confirm("この端末に保存した単語データを消去しますか？")) return;
+  if (!confirm("この端末に保存した単語・熟語データを消去しますか？")) return;
   localStorage.removeItem(STORAGE.cachedWords);
   words = [];
   activeWords = [];
   renderUnitOptions();
+  renderEntryTypeOptions();
   updateActiveWords();
-  $("wordStatus").textContent = "まだ単語データがありません。";
-  $("adminWordStatus").textContent = "端末内単語データはまだ保存されていません。";
+  $("wordStatus").textContent = "まだ問題データがありません。";
+  $("adminWordStatus").textContent = "端末内データはまだ保存されていません。";
   updateStartState();
 });
 
@@ -1506,6 +1633,7 @@ async function boot() {
   loadCachedWordSets();
   renderWordSetOptions();
   loadCachedWords();
+  renderEntryTypeOptions();
   updateModeUI();
   restoreCurrentPlayer();
   updatePlayerStatus();

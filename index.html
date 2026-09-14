@@ -3,15 +3,15 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>英単語バトルレート</title>
-    <link rel="stylesheet" href="styles.css" />
+    <title>英単語・熟語バトルレート</title>
+    <link rel="stylesheet" href="styles.css?v=ember-season-ui-20260914-2" />
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   </head>
   <body>
     <header class="app-header">
       <div>
         <p class="eyebrow">Vocabulary Rating</p>
-        <h1>英単語バトルレート</h1>
+        <h1>英単語・熟語バトルレート</h1>
       </div>
       <nav class="tabs" aria-label="画面切り替え">
         <button class="tab active" data-view="studentView">生徒</button>
@@ -20,12 +20,33 @@
     </header>
 
     <section class="season-banner" aria-label="現在のシーズン">
-      <img src="assets/drizzle-season.png" alt="Drizzle Season new rating season. Rating mode is limited to five attempts per account." />
+      <img src="assets/ember-season.png?v=ember-season-20260905" alt="Ember Season new rating season. Rating mode is limited to five attempts per day." decoding="async" onerror="this.onerror=null;this.src='assets/drizzle-season.png?v=ember-season-20260905';" />
     </section>
 
     <section class="notice-banner" aria-label="利用者への通知">
       <strong>禁止事項</strong>
       <span>人を不快にする名前を用いるのはやめてください。また、アカウントを複数作成することはご遠慮下さい。検知した場合、個人を特定のうえ、全体の利用を停止することがあります。</span>
+    </section>
+
+    <section class="quick-guide" aria-label="遊び方">
+      <div class="guide-intro">
+        <span class="guide-kicker">HOW TO PLAY</span>
+        <strong>3ステップで挑戦</strong>
+      </div>
+      <div class="guide-step">
+        <span class="guide-number">01</span>
+        <div><strong>プレイヤー登録</strong><small>名前と暗証番号を入力</small></div>
+      </div>
+      <div class="guide-arrow" aria-hidden="true">→</div>
+      <div class="guide-step">
+        <span class="guide-number">02</span>
+        <div><strong>教材を選ぶ</strong><small>単語・熟語と範囲を設定</small></div>
+      </div>
+      <div class="guide-arrow" aria-hidden="true">→</div>
+      <div class="guide-step">
+        <span class="guide-number">03</span>
+        <div><strong>スタート</strong><small>答えて戦闘力を上げる</small></div>
+      </div>
     </section>
 
     <main>
@@ -46,24 +67,24 @@
 
         <section class="panel upload-panel">
           <div>
-            <h2>共有単語</h2>
-            <p>先生が設定した単語データを読み込みます。つながらない時は直近の単語を使えます。</p>
+            <h2>共有単語・熟語</h2>
+            <p>先生が設定した単語・熟語データを読み込みます。つながらない時は直近のデータを使えます。</p>
           </div>
           <div class="upload-actions">
-            <button id="loadCloudWordsButton" type="button" class="secondary">共有単語を読み込む</button>
+            <button id="loadCloudWordsButton" type="button" class="secondary">共有単語・熟語を読み込む</button>
             <label class="file-button">
               Excelを選ぶ
               <input id="fileInput" type="file" accept=".xlsx,.xls,.csv" />
             </label>
             <button id="sampleButton" type="button" class="secondary">サンプルで試す</button>
           </div>
-          <p id="wordStatus" class="status">まだ単語データがありません。</p>
+          <p id="wordStatus" class="status">まだ問題データがありません。</p>
         </section>
 
         <section class="panel range-panel">
           <div>
             <h2>モードと教材</h2>
-            <p>ガチモードは戦闘力に反映。お気軽モードは範囲指定でスコア練習できます。</p>
+            <p>ガチモードは戦闘力に反映。お気軽モードは範囲指定で単語・熟語を練習できます。</p>
           </div>
           <div class="range-control">
             <input id="wordSetSelect" type="hidden" value="default" />
@@ -81,7 +102,7 @@
               <label>
                 <input type="radio" name="battleMode" value="writing" />
                 <span>書き取りモード</span>
-                <small>英単語を入力</small>
+                <small>英単語・熟語を入力</small>
               </label>
             </div>
             <label>
@@ -90,12 +111,20 @@
                 <option value="__all__">すべて</option>
               </select>
             </label>
+            <label>
+              出題内容
+              <select id="entryTypeSelect">
+                <option value="all">単語＋熟語</option>
+                <option value="word">単語だけ</option>
+                <option value="idiom">熟語だけ</option>
+              </select>
+            </label>
             <div id="rangeInputs" class="number-range disabled">
               <label>開始番号<input id="rangeStart" type="number" min="1" placeholder="例: 301" /></label>
               <label>終了番号<input id="rangeEnd" type="number" min="1" placeholder="例: 500" /></label>
             </div>
             <p id="rangeGuide" class="range-guide">指定できる範囲: 1〜1900</p>
-            <p id="unitStatus" class="status">教材: ターゲット1900</p>
+             <p id="unitStatus" class="status">教材: ターゲット1900</p>
           </div>
         </section>
 
@@ -149,14 +178,15 @@
 
           <section class="quiz-panel">
             <div id="startBox" class="start-box">
-              <h2>英単語バトル</h2>
-              <p>プレイヤー登録と共有単語の読み込みが終わると開始できます。</p>
+              <h2>英単語・熟語バトル</h2>
+              <p>プレイヤー登録と共有データの読み込みが終わると開始できます。</p>
               <button id="startButton" type="button" disabled>スタート</button>
             </div>
 
             <div id="questionBox" class="question-box hidden">
               <div class="question-top">
                 <span id="questionNumber" class="pill">第1問</span>
+                <span id="entryTypeLabel" class="pill muted">単語</span>
                 <span id="difficultyLabel" class="pill muted">難易度 1</span>
               </div>
               <div class="timer-wrap">
@@ -186,7 +216,7 @@
                 <div id="answerReviewList" class="answer-review-list"></div>
               </section>
               <div class="result-actions">
-                <button id="retryWrongButton" type="button" class="secondary">間違えた単語だけ再挑戦</button>
+                <button id="retryWrongButton" type="button" class="secondary">間違えた問題だけ再挑戦</button>
                 <button id="copyAnswersButton" type="button" class="secondary">答え一覧をコピー</button>
                 <button id="rewardPracticeButton" type="button" class="secondary">広告で追加練習</button>
                 <button id="restartButton" type="button">もう一度</button>
@@ -200,7 +230,7 @@
         <section class="panel admin-panel">
           <div>
             <h2>管理者ページ</h2>
-            <p>共有保存、共有単語、設定、最近の結果を確認できます。</p>
+            <p>共有保存、共有単語・熟語、設定、最近の結果を確認できます。</p>
           </div>
           <div class="admin-actions">
             <button id="refreshAdminButton" type="button">状態を更新</button>
@@ -226,7 +256,7 @@
 
         <section class="admin-stats">
           <div><span>現在のシーズン</span><strong id="adminSeasonName">-</strong></div>
-          <div><span>共有単語数</span><strong id="adminWordsCount">0</strong></div>
+          <div><span>共有問題数</span><strong id="adminWordsCount">0</strong></div>
           <div><span>問題数</span><strong id="adminQuizLength">10</strong></div>
           <div><span>制限時間</span><strong id="adminTimeLimit">8秒</strong></div>
           <div><span>最近の結果件数</span><strong id="adminHistoryCount">0</strong></div>
@@ -264,16 +294,16 @@
 
         <section class="panel word-admin-panel">
           <div>
-            <h2>端末内単語データ</h2>
-            <p>共有単語が使えない時の予備です。本番はWordsシートに貼ってください。</p>
+            <h2>端末内単語・熟語データ</h2>
+            <p>共有データが使えない時の予備です。本番はWordsシートに貼ってください。</p>
           </div>
           <div class="word-admin-form">
-            <textarea id="wordPasteArea" placeholder="word	meaning	difficulty	unit	enabled&#10;dog	犬	1	Sample	TRUE&#10;implicitly	暗黙のうちに	30	Sample	TRUE"></textarea>
+            <textarea id="wordPasteArea" placeholder="word	meaning	difficulty	unit	enabled	type&#10;dog	犬	1	Sample	TRUE	word&#10;take part in	参加する	8	Sample	TRUE	idiom"></textarea>
             <div class="word-admin-actions">
               <button id="applyWordsButton" type="button">この端末に反映</button>
-              <button id="clearWordsButton" type="button" class="secondary">端末内単語を消去</button>
+              <button id="clearWordsButton" type="button" class="secondary">端末内データを消去</button>
             </div>
-            <p id="adminWordStatus" class="status">端末内単語データはまだ保存されていません。</p>
+            <p id="adminWordStatus" class="status">端末内データはまだ保存されていません。</p>
           </div>
         </section>
 
@@ -300,6 +330,6 @@
       </section>
     </main>
 
-    <script src="app.js?v=gas-url-fix-20260527b"></script>
+    <script src="app.js?v=ember-season-ui-20260914-2"></script>
   </body>
 </html>
