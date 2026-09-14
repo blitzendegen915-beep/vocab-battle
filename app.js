@@ -26,7 +26,7 @@ const ADMIN_SESSION_KEY = "vocabBattleAdminUnlocked";
 const ADMIN_PIN_SESSION_KEY = "vocabBattleAdminPin";
 const CURRENT_SEASON_ID = "ember_season";
 const CURRENT_SEASON_NAME = "Ember Season";
-const CLIENT_DATA_VERSION = "ember_season_attempts_v2";
+const CLIENT_DATA_VERSION = "ember_season_attempts_v2";const JSONP_TIMEOUT_MS = 45000;
 const DEFAULT_GAS_URL = "https://script.google.com/macros/s/AKfycbw8UFeH9MrSEJ6dezXlrF8Bs_Dw2yifZaupk8G5lmpMf-_g66rj1yNY_s3Rk6GQUjeO/exec";
 const OLD_GAS_URLS = [
   "https://script.google.com/macros/s/AKfycbytVz4FsKrCy1160KkpnvksFiluhOW8EtQQtppF1SW1S3X_9-Ki05AjSaoylhro06ti/exec",
